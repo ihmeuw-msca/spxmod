@@ -8,10 +8,11 @@ from regmod.data import Data
 from regmod.models import BinomialModel, GaussianModel
 from regmod.models import Model as RegmodModel
 from regmod.models import PoissonModel
-from regmod.prior import LinearGaussianPrior, UniformPrior
+from regmod.prior import LinearGaussianPrior, UniformPrior, GaussianPrior, Prior
 from regmod.variable import Variable
 from scipy.linalg import block_diag
 from scipy.stats import norm
+from regmodsm.linalg import get_pred_var
 
 _model_dict = {
     "binomial": BinomialModel,
@@ -20,70 +21,133 @@ _model_dict = {
 }
 
 
+class Dimension:
+    def __init__(self, name: str, type: str) -> None:
+        self.name = name
+        self.type = type
+        self.vals = None
+
+    def set_vals(self, data: DataFrame) -> None:
+        self.vals = list(np.unique(data[self.name]))
+
+
+class VarGroup:
+    def __init__(
+        self,
+        col: str,
+        dim: Optional[Dimension] = None,
+        lam: float = 0.0,
+        gprior: tuple[float, float] = (0.0, np.inf),
+        uprior: tuple[float, float] = (-np.inf, np.inf),
+    ) -> None:
+        self.col = col
+        self.dim = dim
+        self.lam = lam
+        self._gprior = gprior
+        self._uprior = uprior
+
+    @property
+    def gprior(self) -> GaussianPrior:
+        return GaussianPrior(mean=self._gprior[0], sd=self._gprior[1])
+
+    @property
+    def uprior(self) -> UniformPrior:
+        return UniformPrior(lb=self._uprior[0], ub=self._uprior[1])
+
+    @property
+    def priors(self) -> list[Prior]:
+        return [self.gprior, self.uprior]
+
+    @property
+    def size(self) -> int:
+        if self.dim is None:
+            return 1
+        if self.dim.vals is None:
+            raise ValueError(f"Please set values in dim={self.dim.name} first")
+        return len(self.dim.vals)
+
+    def get_variables(self) -> list[Variable]:
+        if self.dim is None:
+            return [Variable(self.col, priors=self.priors)]
+        variables = [
+            Variable(f"{self.col}_{self.dim.name}_{i}", priors=self.priors)
+            for i in range(len(self.dim.vals))
+        ]
+        return variables
+
+    def get_smoothing_gprior(self) -> tuple[NDArray, NDArray]:
+        if self.dim is None or self.dim.type == "categorical" or self.lam == 0.0:
+            return np.empty(shape=(0, self.size)), np.empty(shape=(2, 0))
+        n = len(self.dim.vals)
+        delta = np.diff(self.dim.vals)
+        delta = delta / delta.min()
+        mat = np.zeros(shape=(n - 1, n))
+        id0 = np.diag_indices(n - 1)
+        id1 = (id0[0], id0[1] + 1)
+        mat[id0], mat[id1] = -1.0, 1.0
+        vec = np.zeros(shape=(2, n - 1))
+        vec[1] = 1 / np.sqrt(self.lam)
+        return mat, vec
+
+    def expand_data(self, data: DataFrame) -> DataFrame:
+        if self.dim is None:
+            return DataFrame(index=data.index)
+        df_vars = pd.get_dummies(data[self.dim.name], sparse=True).mul(
+            data[self.col], axis=0
+        )
+        df_vars.rename(
+            columns={
+                val: f"{self.col}_{self.dim.name}_{i}"
+                for i, val in enumerate(self.dim.vals)
+            },
+            inplace=True,
+        )
+        df_vars.drop(
+            columns=[
+                col
+                for col in df_vars.columns
+                if (not isinstance(col, str)) or (not col.startswith(self.col))
+            ],
+            inplace=True,
+        )
+        return df_vars
+
+
 class Model:
     def __init__(
         self,
         model_type: str,
         obs: str,
-        covs: list[str],
-        dims: Optional[dict[str, str]] = None,
-        lams: Optional[dict[str, float]] = None,
-        coef_bounds: Optional[dict[str, tuple[float, float]]] = None,
+        dims: list[dict],
+        var_groups: list[dict],
         weights: str = "weight",
-        default_dim: Optional[str] = None,
-        default_lam: float = 1.0,
         param_specs: Optional[dict] = None,
     ) -> None:
-        dims = dims or {}
-        lams = lams or {}
-        coef_bounds = coef_bounds or {}
-        param_specs = param_specs or {}
-
-        for cov in covs:
-            if cov not in dims:
-                dims[cov] = default_dim
-            if cov not in lams:
-                lams[cov] = default_lam
-
         self.model_type = model_type
         self.obs = obs
-        self.covs = covs
-        self.dims = dims
-        self.lams = lams
-        self.coef_bounds = coef_bounds
-        self.weights = weights
-        self.param_specs = param_specs
 
-        self._dim_vals: dict[str, NDArray] = {}
+        self.dims = tuple(map(lambda kwargs: Dimension(**kwargs), dims))
+        self._dim_dict = {dim.name: dim for dim in self.dims}
+
+        for var_group in var_groups:
+            if ("dim" in var_group) and (var_group["dim"] is not None):
+                var_group["dim"] = self._dim_dict[var_group["dim"]]
+        self.var_groups = tuple(map(lambda kwargs: VarGroup(**kwargs), var_groups))
+
+        self.weights = weights
+        self.param_specs = param_specs or {}
+
         self._model: Optional[RegmodModel] = None
 
-    def _get_dim_vals(self, data: DataFrame) -> dict[str, NDArray]:
-        dim_vals = {}
-        for cov in self.covs:
-            dim = self.dims[cov]
-            if (dim is not None) and (dim not in dim_vals):
-                dim_vals[dim] = np.unique(data[dim])
-        return dim_vals
+    def _set_dim_vals(self, data: DataFrame) -> None:
+        for dim in self.dims:
+            dim.set_vals(data)
 
     def _get_smoothing_prior(self) -> tuple[NDArray, NDArray]:
         prior_mats = []
         prior_vecs = []
-        for cov in self.covs:
-            dim = self.dims[cov]
-            lam = self.lams[cov]
-            if dim is not None:
-                n = len(self._dim_vals[dim])
-                delta = np.diff(self._dim_vals[dim])
-                delta = delta / delta.min()
-                mat = np.zeros(shape=(n - 1, n))
-                id0 = np.diag_indices(n - 1)
-                id1 = (id0[0], id0[1] + 1)
-                mat[id0], mat[id1] = -1.0, 1.0
-                vec = np.zeros(shape=(2, n - 1))
-                vec[1] = 1 / np.sqrt(lam) if lam > 0 else np.inf
-            else:
-                mat = np.zeros(shape=(0, 1))
-                vec = np.zeros(shape=(2, 0))
+        for var_group in self.var_groups:
+            mat, vec = var_group.get_smoothing_gprior()
             prior_mats.append(mat)
             prior_vecs.append(vec)
         prior_mat = block_diag(*prior_mats)
@@ -97,16 +161,8 @@ class Model:
         )
 
         variables = []
-        for cov in self.covs:
-            dim = self.dims[cov]
-            coef_bounds = self.coef_bounds.get(cov, (-np.inf, np.inf))
-            if dim is not None:
-                for i in range(len(self._dim_vals[dim])):
-                    uprior = UniformPrior(lb=coef_bounds[0], ub=coef_bounds[1])
-                    variables.append(Variable(f"{cov}_{i}", priors=[uprior]))
-            else:
-                uprior = UniformPrior(lb=coef_bounds[0], ub=coef_bounds[1])
-                variables.append(Variable(cov, priors=[uprior]))
+        for var_group in self.var_groups:
+            variables.extend(var_group.get_variables())
 
         linear_gpriors = []
         prior_mat, prior_vec = self._get_smoothing_prior()
@@ -134,27 +190,14 @@ class Model:
         data = data.copy()
         data["intercept"] = 1.0
 
-        for cov in self.covs:
-            dim = self.dims[cov]
-            if dim is not None:
-                cov_cols = (
-                    data[[dim, cov]]
-                    .pivot(columns=dim, values=cov)
-                    .fillna(0.0)
-                    .rename(
-                        columns={
-                            val: f"{cov}_{i}"
-                            for i, val in enumerate(self._dim_vals[dim])
-                        }
-                    )
-                )
-                data.drop(columns=cov, inplace=True)
-                data = pd.concat([data, cov_cols], axis=1)
+        for var_group in self.var_groups:
+            df_covs = var_group.expand_data(data)
+            data = pd.concat([data, df_covs], axis=1)
 
         return data
 
     def fit(self, data: DataFrame, **optimizer_options) -> None:
-        self._dim_vals = self._get_dim_vals(data)
+        self._set_dim_vals(data)
         self._model = self._get_model()
         data = self._expand_data(data)
         self._model.attach_df(data)
@@ -176,7 +219,8 @@ class Model:
         if param.offset is not None:
             offset = data[param.offset].to_numpy()
 
-        mat = param.get_mat(self._model.data)
+        mat = np.ascontiguousarray(param.get_mat(self._model.data))
+
         lin_param = offset + mat.dot(coef)
         pred = param.inv_link.fun(lin_param)
 
@@ -184,7 +228,7 @@ class Model:
             if alpha < 0 or alpha > 0.5:
                 raise ValueError("`alpha` has to be between 0 and 0.5")
             vcov = self._model.opt_vcov
-            lin_param_sd = np.sqrt((mat.dot(vcov) * mat).sum(axis=1))
+            lin_param_sd = np.sqrt(get_pred_var(mat, vcov))
             lin_param_lower = norm.ppf(0.5 * alpha, loc=lin_param, scale=lin_param_sd)
             lin_param_upper = norm.ppf(
                 1 - 0.5 * alpha, loc=lin_param, scale=lin_param_sd
