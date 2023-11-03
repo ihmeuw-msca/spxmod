@@ -75,18 +75,31 @@ class VarGroup:
         ]
         return variables
 
-    def get_smoothing_gprior(self) -> tuple[NDArray, NDArray]:
-        if self.dim is None or self.dim.type == "categorical" or self.lam == 0.0:
+    def get_smoothing_gprior(self,mean_lam = 1e-3) -> tuple[NDArray, NDArray]:
+        """
+        mean_lam regularizes the mean of all the coefficients
+        """
+        if self.dim is None or self.lam == 0.0:
             return np.empty(shape=(0, self.size)), np.empty(shape=(2, 0))
+        
+        if self.dim.type == "categorical":
+            n = len(self.dim.vals)
+            vec = np.zeros(shape=(2, n))
+            vec[1] = 1 / np.sqrt(self.lam)
+            return np.identity(self.size),vec
+        
         n = len(self.dim.vals)
-        delta = np.diff(self.dim.vals)
+        delta = np.diff(self.dim.vals) #Delta is unused here, I'll not touch it for now.
         delta = delta / delta.min()
-        mat = np.zeros(shape=(n - 1, n))
+        mat = np.zeros(shape=(n, n)) #Would be (n-1)x(n), but we have an extra row at bottom for ones
         id0 = np.diag_indices(n - 1)
         id1 = (id0[0], id0[1] + 1)
         mat[id0], mat[id1] = -1.0, 1.0
-        vec = np.zeros(shape=(2, n - 1))
-        vec[1] = 1 / np.sqrt(self.lam)
+        mat[-1] = 1/n
+        vec = np.zeros(shape=(2, n))
+        vec[1,:-1] = 1 / np.sqrt(self.lam)
+        vec[1,-1]= 1 / np.sqrt(mean_lam)
+        
         return mat, vec
 
     def expand_data(self, data: DataFrame) -> DataFrame:
