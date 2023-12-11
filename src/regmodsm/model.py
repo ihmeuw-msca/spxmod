@@ -216,7 +216,7 @@ class Model:
 
         return data
 
-    def fit(self, data: DataFrame,dim_val_data = None, **optimizer_options) -> None:
+    def fit(self, data: DataFrame, dim_val_data=None, **optimizer_options) -> None:
         if dim_val_data is None:
             self._set_dim_vals(data)
         else:
