@@ -216,8 +216,11 @@ class Model:
 
         return data
 
-    def fit(self, data: DataFrame, **optimizer_options) -> None:
-        self._set_dim_vals(data)
+    def fit(self, data: DataFrame,dim_val_data = None, **optimizer_options) -> None:
+        if dim_val_data is None:
+            self._set_dim_vals(data)
+        else:
+            self._set_dim_vals(dim_val_data)
         self._model = self._get_model()
         data = self._expand_data(data)
         self._model.attach_df(data)
