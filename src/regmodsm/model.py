@@ -13,6 +13,7 @@ from regmod.variable import Variable
 from scipy.linalg import block_diag
 from scipy.stats import norm
 from regmodsm.linalg import get_pred_var
+from sklearn.preprocessing import OneHotEncoder
 
 _model_dict = {
     "binomial": BinomialModel,
@@ -29,6 +30,9 @@ class Dimension:
 
     def set_vals(self, data: DataFrame) -> None:
         self.vals = list(np.unique(data[self.name]))
+        self.encoder = OneHotEncoder()
+        self.encoder.fit(data[[self.name]])
+
 
 
 class VarGroup:
@@ -112,9 +116,16 @@ class VarGroup:
     def expand_data(self, data: DataFrame) -> DataFrame:
         if self.dim is None:
             return DataFrame(index=data.index)
-        df_vars = pd.get_dummies(data[self.dim.name], sparse=True).mul(
-            data[self.col], axis=0
-        )
+        
+        dummies = pd.DataFrame.sparse.from_spmatrix(
+            self.dim.encoder.transform(data[[self.dim.name]]),
+            columns = self.dim.encoder.categories_[0]
+            )
+                
+        df_vars = dummies.mul(
+            data.reset_index()[self.col], axis=0
+        ).set_index(data.index)
+
         df_vars.rename(
             columns={
                 val: f"{self.col}_{self.dim.name}_{i}"
@@ -122,6 +133,7 @@ class VarGroup:
             },
             inplace=True,
         )
+        
         df_vars.drop(
             columns=[
                 col
