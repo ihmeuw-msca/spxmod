@@ -46,6 +46,10 @@ class VarGroup:
         self._gprior = gprior
         self._uprior = uprior
 
+        # transfer lam to gprior when dim is categorical
+        if self.dim.type == "categorical" and self.lam != 0.0:
+            self._gprior = (0.0, 1.0 / np.sqrt(self.lam))
+
     @property
     def gprior(self) -> GaussianPrior:
         return GaussianPrior(mean=self._gprior[0], sd=self._gprior[1])
@@ -75,31 +79,26 @@ class VarGroup:
         ]
         return variables
 
-    def get_smoothing_gprior(self,mean_lam = 1e-3) -> tuple[NDArray, NDArray]:
+    def get_smoothing_gprior(self, mean_lam=1e-3) -> tuple[NDArray, NDArray]:
         """
         mean_lam regularizes the mean of all the coefficients
         """
-        if self.dim is None or self.lam == 0.0:
-            return np.empty(shape=(0, self.size)), np.empty(shape=(2, 0))
-        
-        if self.dim.type == "categorical":
+        mat = np.empty(shape=(0, self.size))
+        vec = np.empty(shape=(2, 0))
+
+        if self.dim.type == "continuous" and self.lam > 0.0:
             n = len(self.dim.vals)
-            vec = np.zeros(shape=(2, n))
+            mat = np.zeros(shape=(n - 1, n))
+            id0 = np.diag_indices(n - 1)
+            id1 = (id0[0], id0[1] + 1)
+            mat[id0], mat[id1] = -1.0, 1.0
+            vec = np.zeros(shape=(2, n - 1))
             vec[1] = 1 / np.sqrt(self.lam)
-            return np.identity(self.size),vec
-        
-        n = len(self.dim.vals)
-        delta = np.diff(self.dim.vals) #Delta is unused here, I'll not touch it for now.
-        delta = delta / delta.min()
-        mat = np.zeros(shape=(n, n)) #Would be (n-1)x(n), but we have an extra row at bottom for ones
-        id0 = np.diag_indices(n - 1)
-        id1 = (id0[0], id0[1] + 1)
-        mat[id0], mat[id1] = -1.0, 1.0
-        mat[-1] = 1/n
-        vec = np.zeros(shape=(2, n))
-        vec[1,:-1] = 1 / np.sqrt(self.lam)
-        vec[1,-1]= 1 / np.sqrt(mean_lam)
-        
+
+        if mean_lam > 0.0:
+            mat = np.vstack([mat, np.repeat(1.0 / n, n)])
+            vec = np.hstack([vec, np.array([[0.0], [1.0 / np.sqrt(mean_lam)]])])
+
         return mat, vec
 
     def expand_data(self, data: DataFrame) -> DataFrame:
