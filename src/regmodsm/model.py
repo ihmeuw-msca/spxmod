@@ -37,12 +37,14 @@ class VarGroup:
         col: str,
         dim: Optional[Dimension] = None,
         lam: float = 0.0,
+        lam_mean: float = 1e-8,
         gprior: tuple[float, float] = (0.0, np.inf),
         uprior: tuple[float, float] = (-np.inf, np.inf),
     ) -> None:
         self.col = col
         self.dim = dim
         self.lam = lam
+        self.lam_mean = lam_mean
         self._gprior = gprior
         self._uprior = uprior
 
@@ -79,7 +81,7 @@ class VarGroup:
         ]
         return variables
 
-    def get_smoothing_gprior(self, mean_lam=1e-3) -> tuple[NDArray, NDArray]:
+    def get_smoothing_gprior(self) -> tuple[NDArray, NDArray]:
         """
         mean_lam regularizes the mean of all the coefficients
         """
@@ -95,9 +97,9 @@ class VarGroup:
             vec = np.zeros(shape=(2, n - 1))
             vec[1] = 1 / np.sqrt(self.lam)
 
-        if mean_lam > 0.0:
+        if self.lam_mean > 0.0:
             mat = np.vstack([mat, np.repeat(1.0 / n, n)])
-            vec = np.hstack([vec, np.array([[0.0], [1.0 / np.sqrt(mean_lam)]])])
+            vec = np.hstack([vec, np.array([[0.0], [1.0 / np.sqrt(self.lam_mean)]])])
 
         return mat, vec
 
