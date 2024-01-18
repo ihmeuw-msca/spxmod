@@ -40,6 +40,7 @@ class VarGroup:
         lam_mean: float = 1e-8,
         gprior: tuple[float, float] = (0.0, np.inf),
         uprior: tuple[float, float] = (-np.inf, np.inf),
+        scale_by_distance: bool = False,
     ) -> None:
         self.col = col
         self.dim = dim
@@ -47,6 +48,7 @@ class VarGroup:
         self.lam_mean = lam_mean
         self._gprior = gprior
         self._uprior = uprior
+        self.scale_by_distance = scale_by_distance
 
         # transfer lam to gprior when dim is categorical
         if self.dim.type == "categorical" and self.lam != 0.0:
@@ -96,6 +98,10 @@ class VarGroup:
             mat[id0], mat[id1] = -1.0, 1.0
             vec = np.zeros(shape=(2, n - 1))
             vec[1] = 1 / np.sqrt(self.lam)
+            if self.scale_by_distance:
+                delta = np.diff(self.dim.vals)
+                delta /= delta.min()
+                vec[1] *= delta
 
         if self.lam_mean > 0.0:
             mat = np.vstack([mat, np.repeat(1.0 / n, n)])
