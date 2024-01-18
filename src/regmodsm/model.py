@@ -83,11 +83,11 @@ class VarGroup:
         """
         mean_lam regularizes the mean of all the coefficients
         """
-        mat = np.empty(shape=(0, self.size))
+        n = self.size
+        mat = np.empty(shape=(0, n))
         vec = np.empty(shape=(2, 0))
 
         if self.dim.type == "continuous" and self.lam > 0.0:
-            n = len(self.dim.vals)
             mat = np.zeros(shape=(n - 1, n))
             id0 = np.diag_indices(n - 1)
             id1 = (id0[0], id0[1] + 1)
