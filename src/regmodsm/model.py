@@ -51,7 +51,7 @@ class VarGroup:
         self.scale_by_distance = scale_by_distance
 
         # transfer lam to gprior when dim is categorical
-        if self.dim.type == "categorical" and self.lam != 0.0:
+        if self.dim.type == "categorical" and self.lam > 0.0:
             self._gprior = (0.0, 1.0 / np.sqrt(self.lam))
 
     @property
