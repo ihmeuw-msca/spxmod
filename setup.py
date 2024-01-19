@@ -25,7 +25,7 @@ if __name__ == "__main__":
 
     setup(
         name="regmodsm",
-        version="0.1.0",
+        version="0.1.1",
         description="Regression model smoother",
         long_description=long_description,
         license="LICENSE",
