@@ -30,8 +30,8 @@ class Dimension:
         self.encoder = OneHotEncoder()
 
     def set_vals(self, data: DataFrame) -> None:
-        self.vals = list(np.unique(data[self.name]))
         self.encoder.fit(data[[self.name]])
+        self.vals = self.encoder.categories_[0].tolist()
 
 
 class VarGroup:
@@ -118,12 +118,9 @@ class VarGroup:
 
         dummies = pd.DataFrame.sparse.from_spmatrix(
             self.dim.encoder.transform(data[[self.dim.name]]),
-            columns=self.dim.encoder.categories_[0],
+            columns=self.dim.vals,
         )
-
-        df_vars = dummies.mul(data.reset_index()[self.col], axis=0).set_index(
-            data.index
-        )
+        df_vars = dummies.mul(data[self.col], axis=0)
 
         df_vars.rename(
             columns={
