@@ -54,8 +54,9 @@ class VarGroup:
         self.scale_by_distance = scale_by_distance
 
         # transfer lam to gprior when dim is categorical
-        if self.dim.type == "categorical" and self.lam > 0.0:
-            self._gprior = (0.0, 1.0 / np.sqrt(self.lam))
+        if self.dim is not None:
+            if self.dim.type == "categorical" and self.lam > 0.0:
+                self._gprior = (0.0, 1.0 / np.sqrt(self.lam))
 
     @property
     def gprior(self) -> GaussianPrior:
@@ -94,21 +95,24 @@ class VarGroup:
         mat = np.empty(shape=(0, n))
         vec = np.empty(shape=(2, 0))
 
-        if self.dim.type == "continuous" and self.lam > 0.0:
-            mat = np.zeros(shape=(n - 1, n))
-            id0 = np.diag_indices(n - 1)
-            id1 = (id0[0], id0[1] + 1)
-            mat[id0], mat[id1] = -1.0, 1.0
-            vec = np.zeros(shape=(2, n - 1))
-            vec[1] = 1 / np.sqrt(self.lam)
-            if self.scale_by_distance:
-                delta = np.diff(self.dim.vals)
-                delta /= delta.min()
-                vec[1] *= delta
+        if self.dim is not None:
+            if self.dim.type == "continuous" and self.lam > 0.0:
+                mat = np.zeros(shape=(n - 1, n))
+                id0 = np.diag_indices(n - 1)
+                id1 = (id0[0], id0[1] + 1)
+                mat[id0], mat[id1] = -1.0, 1.0
+                vec = np.zeros(shape=(2, n - 1))
+                vec[1] = 1 / np.sqrt(self.lam)
+                if self.scale_by_distance:
+                    delta = np.diff(self.dim.vals)
+                    delta /= delta.min()
+                    vec[1] *= delta
 
-        if self.lam_mean > 0.0:
-            mat = np.vstack([mat, np.repeat(1.0 / n, n)])
-            vec = np.hstack([vec, np.array([[0.0], [1.0 / np.sqrt(self.lam_mean)]])])
+            if self.lam_mean > 0.0:
+                mat = np.vstack([mat, np.repeat(1.0 / n, n)])
+                vec = np.hstack(
+                    [vec, np.array([[0.0], [1.0 / np.sqrt(self.lam_mean)]])]
+                )
 
         return mat, vec
 
