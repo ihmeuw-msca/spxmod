@@ -37,14 +37,22 @@ class VarGroup:
         col: str,
         dim: Optional[Dimension] = None,
         lam: float = 0.0,
+        lam_mean: float = 1e-8,
         gprior: tuple[float, float] = (0.0, np.inf),
         uprior: tuple[float, float] = (-np.inf, np.inf),
+        scale_by_distance: bool = False,
     ) -> None:
         self.col = col
         self.dim = dim
         self.lam = lam
+        self.lam_mean = lam_mean
         self._gprior = gprior
         self._uprior = uprior
+        self.scale_by_distance = scale_by_distance
+
+        # transfer lam to gprior when dim is categorical
+        if self.dim.type == "categorical" and self.lam > 0.0:
+            self._gprior = (0.0, 1.0 / np.sqrt(self.lam))
 
     @property
     def gprior(self) -> GaussianPrior:
@@ -76,17 +84,29 @@ class VarGroup:
         return variables
 
     def get_smoothing_gprior(self) -> tuple[NDArray, NDArray]:
-        if self.dim is None or self.dim.type == "categorical" or self.lam == 0.0:
-            return np.empty(shape=(0, self.size)), np.empty(shape=(2, 0))
-        n = len(self.dim.vals)
-        delta = np.diff(self.dim.vals)
-        delta = delta / delta.min()
-        mat = np.zeros(shape=(n - 1, n))
-        id0 = np.diag_indices(n - 1)
-        id1 = (id0[0], id0[1] + 1)
-        mat[id0], mat[id1] = -1.0, 1.0
-        vec = np.zeros(shape=(2, n - 1))
-        vec[1] = 1 / np.sqrt(self.lam)
+        """
+        mean_lam regularizes the mean of all the coefficients
+        """
+        n = self.size
+        mat = np.empty(shape=(0, n))
+        vec = np.empty(shape=(2, 0))
+
+        if self.dim.type == "continuous" and self.lam > 0.0:
+            mat = np.zeros(shape=(n - 1, n))
+            id0 = np.diag_indices(n - 1)
+            id1 = (id0[0], id0[1] + 1)
+            mat[id0], mat[id1] = -1.0, 1.0
+            vec = np.zeros(shape=(2, n - 1))
+            vec[1] = 1 / np.sqrt(self.lam)
+            if self.scale_by_distance:
+                delta = np.diff(self.dim.vals)
+                delta /= delta.min()
+                vec[1] *= delta
+
+        if self.lam_mean > 0.0:
+            mat = np.vstack([mat, np.repeat(1.0 / n, n)])
+            vec = np.hstack([vec, np.array([[0.0], [1.0 / np.sqrt(self.lam_mean)]])])
+
         return mat, vec
 
     def expand_data(self, data: DataFrame) -> DataFrame:
