@@ -13,6 +13,7 @@ from regmod.variable import Variable
 from scipy.linalg import block_diag
 from scipy.stats import norm
 from regmodsm.linalg import get_pred_var
+from sklearn.preprocessing import OneHotEncoder
 
 _model_dict = {
     "binomial": BinomialModel,
@@ -26,9 +27,11 @@ class Dimension:
         self.name = name
         self.type = type
         self.vals = None
+        self.encoder = OneHotEncoder()
 
     def set_vals(self, data: DataFrame) -> None:
-        self.vals = list(np.unique(data[self.name]))
+        self.encoder.fit(data[[self.name]])
+        self.vals = self.encoder.categories_[0].tolist()
 
 
 class VarGroup:
@@ -112,9 +115,13 @@ class VarGroup:
     def expand_data(self, data: DataFrame) -> DataFrame:
         if self.dim is None:
             return DataFrame(index=data.index)
-        df_vars = pd.get_dummies(data[self.dim.name], sparse=True).mul(
-            data[self.col], axis=0
+
+        dummies = pd.DataFrame.sparse.from_spmatrix(
+            self.dim.encoder.transform(data[[self.dim.name]]),
+            columns=self.dim.vals,
         )
+        df_vars = dummies.mul(data[self.col], axis=0)
+
         df_vars.rename(
             columns={
                 val: f"{self.col}_{self.dim.name}_{i}"
@@ -122,6 +129,7 @@ class VarGroup:
             },
             inplace=True,
         )
+
         df_vars.drop(
             columns=[
                 col
@@ -216,8 +224,16 @@ class Model:
 
         return data
 
-    def fit(self, data: DataFrame, **optimizer_options) -> None:
-        self._set_dim_vals(data)
+    def fit(
+        self,
+        data: DataFrame,
+        data_dim_vals: DataFrame | None = None,
+        **optimizer_options,
+    ) -> None:
+        if data_dim_vals is None:
+            self._set_dim_vals(data)
+        else:
+            self._set_dim_vals(data_dim_vals)
         self._model = self._get_model()
         data = self._expand_data(data)
         self._model.attach_df(data)
