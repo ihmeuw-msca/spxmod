@@ -27,12 +27,11 @@ class Dimension:
         self.name = name
         self.type = type
         self.vals = None
+        self.encoder = OneHotEncoder()
 
     def set_vals(self, data: DataFrame) -> None:
         self.vals = list(np.unique(data[self.name]))
-        self.encoder = OneHotEncoder()
         self.encoder.fit(data[[self.name]])
-
 
 
 class VarGroup:
@@ -116,15 +115,15 @@ class VarGroup:
     def expand_data(self, data: DataFrame) -> DataFrame:
         if self.dim is None:
             return DataFrame(index=data.index)
-        
+
         dummies = pd.DataFrame.sparse.from_spmatrix(
             self.dim.encoder.transform(data[[self.dim.name]]),
-            columns = self.dim.encoder.categories_[0]
-            )
-                
-        df_vars = dummies.mul(
-            data.reset_index()[self.col], axis=0
-        ).set_index(data.index)
+            columns=self.dim.encoder.categories_[0],
+        )
+
+        df_vars = dummies.mul(data.reset_index()[self.col], axis=0).set_index(
+            data.index
+        )
 
         df_vars.rename(
             columns={
@@ -133,7 +132,7 @@ class VarGroup:
             },
             inplace=True,
         )
-        
+
         df_vars.drop(
             columns=[
                 col
