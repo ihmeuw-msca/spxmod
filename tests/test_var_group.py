@@ -20,7 +20,7 @@ def data() -> pd.DataFrame:
 @pytest.fixture
 def dimensions(data) -> dict[str, Dimension]:
     dimensions = {
-        "age": Dimension(name="age", type="continuous"),
+        "age": Dimension(name="age", type="numerical"),
         "loc": Dimension(name="loc", type="categorical"),
     }
     for dim in dimensions.values():
@@ -44,7 +44,7 @@ def test_categorical_lam(dimensions, lam, gprior_sd):
         (1.0, True, np.array([1.0, 3.0, 1.0 / np.sqrt(1e-8)])),
     ],
 )
-def test_continuous_lam(dimensions, lam, scale_by_distance, smooth_gprior_sd):
+def test_numerical_lam(dimensions, lam, scale_by_distance, smooth_gprior_sd):
     dim = dimensions["age"]
     var_group = VarGroup(
         col="sdi", dim=dim, lam=lam, scale_by_distance=scale_by_distance
