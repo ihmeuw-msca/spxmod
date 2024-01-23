@@ -124,7 +124,7 @@ class VarGroup:
             self.dim.encoder.transform(data[[self.dim.name]]),
             columns=self.dim.vals,
         )
-        df_vars = dummies.mul(data[self.col], axis=0)
+        df_vars = dummies.mul(data[self.col].reset_index(drop=True), axis=0)
 
         df_vars.rename(
             columns={
