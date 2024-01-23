@@ -96,7 +96,7 @@ class VarGroup:
         vec = np.empty(shape=(2, 0))
 
         if self.dim is not None:
-            if self.dim.type == "continuous" and self.lam > 0.0:
+            if self.dim.type == "numerical" and self.lam > 0.0:
                 mat = np.zeros(shape=(n - 1, n))
                 id0 = np.diag_indices(n - 1)
                 id1 = (id0[0], id0[1] + 1)
@@ -122,26 +122,12 @@ class VarGroup:
 
         dummies = pd.DataFrame.sparse.from_spmatrix(
             self.dim.encoder.transform(data[[self.dim.name]]),
-            columns=self.dim.vals,
+            columns=[
+                f"{self.col}_{self.dim.name}_{i}" for i in range(len(self.dim.vals))
+            ],
+            index=data.index,
         )
         df_vars = dummies.mul(data[self.col], axis=0)
-
-        df_vars.rename(
-            columns={
-                val: f"{self.col}_{self.dim.name}_{i}"
-                for i, val in enumerate(self.dim.vals)
-            },
-            inplace=True,
-        )
-
-        df_vars.drop(
-            columns=[
-                col
-                for col in df_vars.columns
-                if (not isinstance(col, str)) or (not col.startswith(self.col))
-            ],
-            inplace=True,
-        )
         return df_vars
 
 
