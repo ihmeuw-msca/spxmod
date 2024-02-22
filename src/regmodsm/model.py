@@ -1,5 +1,3 @@
-from typing import Optional
-
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
@@ -23,6 +21,17 @@ _model_dict = {
 
 
 class Dimension:
+    """Dimension which variable varies on.
+
+    Parameters
+    ----------
+    name : str
+        Name of the dimension. This corresponds to the column name in the data.
+    type : {"numerical", "categorical"}
+        Type of the dimension. Either "numerical" or "categorical".
+
+    """
+
     def __init__(self, name: str, type: str) -> None:
         self.name = name
         self.type = type
@@ -30,15 +39,52 @@ class Dimension:
         self.encoder = OneHotEncoder()
 
     def set_vals(self, data: DataFrame) -> None:
+        """Set the unique values of the dimension.
+
+        Parameters
+        ----------
+        data : DataFrame
+            Data to set the unique values from.
+
+        """
         self.encoder.fit(data[[self.name]])
         self.vals = self.encoder.categories_[0].tolist()
 
 
 class VarGroup:
+    """Variable group which created by partitioning a variable based on its dimension.
+
+    Parameters
+    ----------
+    col : str
+        Name of variable which corresponding to the column in the data.
+    dim : Dimension, optional
+        Dimension of the variable. If None, the variable is not partitioned.
+    lam : float, optional
+        Regularization parameter for the variable. Default is 0.0. If the dimension is
+        categorical, the prior on the coefficients is set to Gaussian prior with mean 0
+        and standard deviation 1/sqrt(lam). If the dimension is numerical, the prior
+        on the difference of the neighboring coefficients is set to Gaussian prior
+        with mean 0 and standard deviation 1/sqrt(lam).
+    lam_mean : float, optional
+        Regularization parameter for the mean of the variables from the variable group.
+        Default is 1e-8. If the dimension is numerical, the prior on the mean of the
+        coefficients is set to Gaussian prior with mean 0 and standard deviation
+        1/sqrt(lam_mean).
+    gprior : tuple, optional
+        Gaussian prior for the variable. Default is (0.0, np.inf).
+    uprior : tuple, optional
+        Uniform prior for the variable. Default is (-np.inf, np.inf).
+    scale_by_distance : bool, optional
+        Whether to scale the prior standard deviation by the distance between the values
+        of the neighboring dimension. Default is False.
+
+    """
+
     def __init__(
         self,
         col: str,
-        dim: Optional[Dimension] = None,
+        dim: Dimension | None = None,
         lam: float = 0.0,
         lam_mean: float = 1e-8,
         gprior: tuple[float, float] = (0.0, np.inf),
@@ -60,18 +106,22 @@ class VarGroup:
 
     @property
     def gprior(self) -> GaussianPrior:
+        """Gaussian prior for the variable."""
         return GaussianPrior(mean=self._gprior[0], sd=self._gprior[1])
 
     @property
     def uprior(self) -> UniformPrior:
+        """Uniform prior for the variable."""
         return UniformPrior(lb=self._uprior[0], ub=self._uprior[1])
 
     @property
     def priors(self) -> list[Prior]:
+        """List of priors for the variable containing Gaussian and Uniform priors."""
         return [self.gprior, self.uprior]
 
     @property
     def size(self) -> int:
+        """Number of variables in the variable group."""
         if self.dim is None:
             return 1
         if self.dim.vals is None:
@@ -79,6 +129,7 @@ class VarGroup:
         return len(self.dim.vals)
 
     def get_variables(self) -> list[Variable]:
+        """Returns the list of variables in the variable group."""
         if self.dim is None:
             return [Variable(self.col, priors=self.priors)]
         variables = [
@@ -88,8 +139,18 @@ class VarGroup:
         return variables
 
     def get_smoothing_gprior(self) -> tuple[NDArray, NDArray]:
-        """
-        mean_lam regularizes the mean of all the coefficients
+        """Returns the smoothing Gaussian prior for the variable group. When the
+        dimension is numerical, the prior on the difference of the neighboring
+        coefficients is set to Gaussian prior with mean 0 and standard deviation
+        1/sqrt(lam). When the dimension is categorical, the prior on the the
+        coefficients is set to Gaussian prior with mean 0 and standard deviation
+        1/sqrt(lam_mean).
+
+        Returns
+        -------
+        tuple[NDArray, NDArray]
+            Smoothing Gaussian prior matrix and vector.
+
         """
         n = self.size
         mat = np.empty(shape=(0, n))
@@ -117,6 +178,19 @@ class VarGroup:
         return mat, vec
 
     def expand_data(self, data: DataFrame) -> DataFrame:
+        """Expand the variable column into multiple columns based on the dimension.
+
+        Parameters
+        ----------
+        data : DataFrame
+            Data containing the variable column.
+
+        Returns
+        -------
+        DataFrame
+            Expanded variable columns.
+
+        """
         if self.dim is None:
             return DataFrame(index=data.index)
 
@@ -139,7 +213,7 @@ class Model:
         dims: list[dict],
         var_groups: list[dict],
         weights: str = "weight",
-        param_specs: Optional[dict] = None,
+        param_specs: dict | None = None,
     ) -> None:
         self.model_type = model_type
         self.obs = obs
@@ -155,7 +229,7 @@ class Model:
         self.weights = weights
         self.param_specs = param_specs or {}
 
-        self._model: Optional[RegmodModel] = None
+        self._model: RegmodModel | None = None
 
     def _set_dim_vals(self, data: DataFrame) -> None:
         for dim in self.dims:
