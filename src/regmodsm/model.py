@@ -206,6 +206,25 @@ class VarGroup:
 
 
 class Model:
+    """Regmod smooth model.
+
+    Parameters
+    ----------
+    model_type : {"binomial", "poisson", "gaussian"}
+        Type of the model.
+    obs : str
+        Name of the observation column in the data.
+    dims : list[dict]
+        List of dictionaries containing the dimension name and arguments.
+    var_groups : list[dict]
+        List of dictionaries containing the variable group name and arguments.
+    weights : str, optional
+        Name of the weight column in the data. Default is "weight".
+    param_specs : dict, optional
+        Additional parameter specifications for the model.
+
+    """
+
     def __init__(
         self,
         model_type: str,
@@ -294,6 +313,19 @@ class Model:
         data_dim_vals: DataFrame | None = None,
         **optimizer_options,
     ) -> None:
+        """Fit the model to the data.
+
+        Parameters
+        ----------
+        data : DataFrame
+            Data to fit the model to.
+        data_dim_vals : DataFrame, optional
+            Data containing the unique values of the dimensions. If None, the unique
+            values are extracted from the data. Default is None.
+        optimizer_options
+            Additional options for the optimizer.
+
+        """
         if data_dim_vals is None:
             self._set_dim_vals(data)
         else:
@@ -310,6 +342,24 @@ class Model:
         return_ui: bool = False,
         alpha: float = 0.05,
     ) -> NDArray:
+        """Predict the response variable.
+
+        Parameters
+        ----------
+        data : DataFrame
+            Data to predict the response variable.
+        return_ui : bool, optional
+            Whether to return the prediction interval. Default is False.
+        alpha : float, optional
+            Significance level for the prediction interval. Default is 0.05.
+
+        Returns
+        -------
+        NDArray
+            Predicted response variable. If `return_ui` is True, the prediction interval
+            is also returned.
+
+        """
         data = self._expand_data(data)
         self._model.data.attach_df(data)
         param = self._model.params[0]
