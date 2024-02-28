@@ -1,34 +1,71 @@
+"""Fit a RegMod model with variables regularized in dimension groupings.
+
+Examples
+--------
+Fit a RegMod model with covariate values smoothed by age. In this model,
+a different coefficient for the covariate `mean_BMI` is fit for each
+unique value of `age_mid`. Because the age dimension is numerical, a
+Gaussian prior with mean 0 and standard deviation 1/sqrt(lam) is set on
+the differences between neighboring coefficients. This ensures that
+coefficients vary smoothly by age. The uniform prior forces the
+coefficients to have positive values.
+
+>>> import numpy as np
+>>> from regmodsm.model import Model
+>>> model = Model(
+        model_type="binomial",
+        obs="obs_rate",
+        dims=[{"name": "age_mid", "type": "numerical"}],
+        var_groups=[{"col": "mean_BMI", "dim": "age_mid", "lam": 1.0, "uprior": (0.0, np.inf)}],
+        weights="sample_size"
+    )
+
+Fit a RegMod model with intercept values smoothed by region. In this
+model, a different intercept is fit for each unique value of
+`region_id`. A Gaussian prior with mean 0 and standard deviation
+1/sqrt(lam) is set on the mean of the intercept values.
+
+>>> from regmodsm.model import Model
+>>> model = Model(
+        model_type="binomial",
+        obs="obs_rate",
+        dims=[{"name": "region_id", "type": "categorical"}],
+        var_groups=[{"col": "intercept", "dim": "region_id", "lam_mean": 1.0}],
+        weights="sample_size"
+    )
+
+"""
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 from pandas import DataFrame
 from regmod.data import Data
-from regmod.models import BinomialModel, GaussianModel
+from regmod.models import BinomialModel, GaussianModel, PoissonModel
 from regmod.models import Model as RegmodModel
-from regmod.models import PoissonModel
-from regmod.prior import LinearGaussianPrior, UniformPrior, GaussianPrior, Prior
+from regmod.prior import LinearGaussianPrior, GaussianPrior, Prior, UniformPrior
 from regmod.variable import Variable
 from scipy.linalg import block_diag
 from scipy.stats import norm
-from regmodsm.linalg import get_pred_var
 from sklearn.preprocessing import OneHotEncoder
+
+from regmodsm.linalg import get_pred_var
 
 _model_dict = {
     "binomial": BinomialModel,
-    "poisson": PoissonModel,
     "gaussian": GaussianModel,
+    "poisson": PoissonModel,
 }
 
 
 class Dimension:
-    """Dimension which variable varies on.
+    """Dimension used for grouped variable smoothing.
 
     Parameters
     ----------
     name : str
-        Name of the dimension. This corresponds to the column name in the data.
+        Name of the dimension column in the data.
     type : {"numerical", "categorical"}
-        Type of the dimension. Either "numerical" or "categorical".
+        Dimension type.
 
     """
 
@@ -39,12 +76,12 @@ class Dimension:
         self.encoder = OneHotEncoder()
 
     def set_vals(self, data: DataFrame) -> None:
-        """Set the unique values of the dimension.
+        """Set the unique dimension values.
 
         Parameters
         ----------
         data : DataFrame
-            Data to set the unique values from.
+            Data to set the unique dimension values from.
 
         """
         self.encoder.fit(data[[self.name]])
@@ -52,32 +89,38 @@ class Dimension:
 
 
 class VarGroup:
-    """Variable group which created by partitioning a variable based on its dimension.
+    """Variable group created by partitioning a variable along a dimension.
 
     Parameters
     ----------
     col : str
-        Name of variable which corresponding to the column in the data.
+        Name of the variable column in the data.
     dim : Dimension, optional
-        Dimension of the variable. If None, the variable is not partitioned.
+        Dimension to partition the variable on. If None, the variable is
+        not partitioned.
     lam : float, optional
-        Regularization parameter for the variable. Default is 0.0. If the dimension is
-        categorical, the prior on the coefficients is set to Gaussian prior with mean 0
-        and standard deviation 1/sqrt(lam). If the dimension is numerical, the prior
-        on the difference of the neighboring coefficients is set to Gaussian prior
-        with mean 0 and standard deviation 1/sqrt(lam).
+        Regularization parameter for the coefficients in the variable
+        group. Default is 0. If the dimension is numerical, a Gaussian
+        prior with mean 0 and standard deviation 1/sqrt(lam) is set on
+        the differences between neighboring coefficients along the
+        dimension. If the dimension is categorical, a Gaussian prior
+        with mean 0 and standard deviation 1/sqrt(lam) is set on the
+        coefficients.
     lam_mean : float, optional
-        Regularization parameter for the mean of the variables from the variable group.
-        Default is 1e-8. If the dimension is numerical, the prior on the mean of the
-        coefficients is set to Gaussian prior with mean 0 and standard deviation
-        1/sqrt(lam_mean).
+        Regularization parameter for the mean of the coefficients in the
+        variable group. Default is 1e-8. A Gaussian prior with mean 0
+        and standard deviation 1/sqrt(lam_mean) is set on the mean of
+        the coefficients.
     gprior : tuple, optional
-        Gaussian prior for the variable. Default is (0.0, np.inf).
+        Gaussian prior for the variable. Default is (0, np.inf).
+        Argument is overwritten with (0, 1/sqrt(lam)) if dimension is
+        categorical.
     uprior : tuple, optional
         Uniform prior for the variable. Default is (-np.inf, np.inf).
     scale_by_distance : bool, optional
-        Whether to scale the prior standard deviation by the distance between the values
-        of the neighboring dimension. Default is False.
+        Whether to scale the prior standard deviation by the distance
+        between the neighboring values along the dimension. For
+        numerical dimensions only. Default is False.
 
     """
 
@@ -106,17 +149,17 @@ class VarGroup:
 
     @property
     def gprior(self) -> GaussianPrior:
-        """Gaussian prior for the variable."""
+        """Gaussian prior for the variable group."""
         return GaussianPrior(mean=self._gprior[0], sd=self._gprior[1])
 
     @property
     def uprior(self) -> UniformPrior:
-        """Uniform prior for the variable."""
+        """Uniform prior for the variable group."""
         return UniformPrior(lb=self._uprior[0], ub=self._uprior[1])
 
     @property
     def priors(self) -> list[Prior]:
-        """List of priors for the variable containing Gaussian and Uniform priors."""
+        """List of Gaussian and Uniform priors for the variable group."""
         return [self.gprior, self.uprior]
 
     @property
@@ -139,12 +182,14 @@ class VarGroup:
         return variables
 
     def get_smoothing_gprior(self) -> tuple[NDArray, NDArray]:
-        """Returns the smoothing Gaussian prior for the variable group. When the
-        dimension is numerical, the prior on the difference of the neighboring
-        coefficients is set to Gaussian prior with mean 0 and standard deviation
-        1/sqrt(lam). When the dimension is categorical, the prior on the the
-        coefficients is set to Gaussian prior with mean 0 and standard deviation
-        1/sqrt(lam_mean).
+        """Returns the smoothing Gaussian prior for the variable group.
+
+        If the dimension is numerical and lam > 0, a Gaussian prior with
+        mean 0 and standard deviation 1/sqrt(lam) is set on the
+        differences between neighboring coefficients along the
+        dimension. For both dimension types if lam_mean > 0, a Gaussian
+        prior with mean 0 and standard deviation 1/sqrt(lam_mean) is set
+        on the mean of the coefficients.
 
         Returns
         -------
@@ -178,7 +223,7 @@ class VarGroup:
         return mat, vec
 
     def expand_data(self, data: DataFrame) -> DataFrame:
-        """Expand the variable column into multiple columns based on the dimension.
+        """Expand the variable into multiple columns based on the dimension.
 
         Parameters
         ----------
@@ -206,18 +251,18 @@ class VarGroup:
 
 
 class Model:
-    """Regmod smooth model.
+    """RegMod Smooth model.
 
     Parameters
     ----------
     model_type : {"binomial", "poisson", "gaussian"}
-        Type of the model.
+        RegMod model type.
     obs : str
         Name of the observation column in the data.
     dims : list[dict]
-        List of dictionaries containing the dimension name and arguments.
+        List of dictionaries containing dimension names and arguments.
     var_groups : list[dict]
-        List of dictionaries containing the variable group name and arguments.
+        List of dictionaries containing variable group names and arguments.
     weights : str, optional
         Name of the weight column in the data. Default is "weight".
     param_specs : dict, optional
@@ -320,8 +365,8 @@ class Model:
         data : DataFrame
             Data to fit the model to.
         data_dim_vals : DataFrame, optional
-            Data containing the unique values of the dimensions. If None, the unique
-            values are extracted from the data. Default is None.
+            Data containing the unique dimension values. If None, values
+            are extracted from the data. Default is None.
         optimizer_options
             Additional options for the optimizer.
 
@@ -395,7 +440,7 @@ class Model:
 
 
 def _detach_df(model: RegmodModel) -> RegmodModel:
-    """Detach data and all the arrays from the regmod model."""
+    """Detach input data and model arrays from the RegMod model."""
     model.data.detach_df()
     del model.mat
     del model.uvec
