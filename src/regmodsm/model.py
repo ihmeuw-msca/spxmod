@@ -35,6 +35,7 @@ model, a different intercept is fit for each unique value of
     )
 
 """
+
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
@@ -46,46 +47,15 @@ from regmod.prior import LinearGaussianPrior, GaussianPrior, Prior, UniformPrior
 from regmod.variable import Variable
 from scipy.linalg import block_diag
 from scipy.stats import norm
-from sklearn.preprocessing import OneHotEncoder
 
 from regmodsm.linalg import get_pred_var
+from regmodsm.dimension import Dimension
 
 _model_dict = {
     "binomial": BinomialModel,
     "gaussian": GaussianModel,
     "poisson": PoissonModel,
 }
-
-
-class Dimension:
-    """Dimension used for grouped variable smoothing.
-
-    Parameters
-    ----------
-    name : str
-        Name of the dimension column in the data.
-    type : {"numerical", "categorical"}
-        Dimension type.
-
-    """
-
-    def __init__(self, name: str, type: str) -> None:
-        self.name = name
-        self.type = type
-        self.vals = None
-        self.encoder = OneHotEncoder()
-
-    def set_vals(self, data: DataFrame) -> None:
-        """Set the unique dimension values.
-
-        Parameters
-        ----------
-        data : DataFrame
-            Data to set the unique dimension values from.
-
-        """
-        self.encoder.fit(data[[self.name]])
-        self.vals = self.encoder.categories_[0].tolist()
 
 
 class VarGroup:
@@ -238,16 +208,7 @@ class VarGroup:
         """
         if self.dim is None:
             return DataFrame(index=data.index)
-
-        dummies = pd.DataFrame.sparse.from_spmatrix(
-            self.dim.encoder.transform(data[[self.dim.name]]),
-            columns=[
-                f"{self.col}_{self.dim.name}_{i}" for i in range(len(self.dim.vals))
-            ],
-            index=data.index,
-        )
-        df_vars = dummies.mul(data[self.col], axis=0)
-        return df_vars
+        return self.dim.get_dummies(data, column=self.col)
 
 
 class Model:
