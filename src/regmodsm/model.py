@@ -137,9 +137,7 @@ class VarGroup:
         """Number of variables in the variable group."""
         if self.dim is None:
             return 1
-        if self.dim.vals is None:
-            raise ValueError(f"Please set values in dim={self.dim.name} first")
-        return len(self.dim.vals)
+        return self.dim.size
 
     def get_variables(self) -> list[Variable]:
         """Returns the list of variables in the variable group."""
@@ -147,7 +145,7 @@ class VarGroup:
             return [Variable(self.col, priors=self.priors)]
         variables = [
             Variable(f"{self.col}_{self.dim.name}_{i}", priors=self.priors)
-            for i in range(len(self.dim.vals))
+            for i in range(self.dim.size)
         ]
         return variables
 
