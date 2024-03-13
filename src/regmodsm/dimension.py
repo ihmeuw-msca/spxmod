@@ -23,14 +23,16 @@ class Dimension:
         self._val_index = None
 
     @property
-    def vals(self) -> list[int | float] | None:
+    def vals(self) -> list[int | float]:
+        if self._vals is None:
+            raise ValueError("Dimension values are not set.")
         return self._vals
 
     @property
     def size(self) -> int:
-        if self.vals is None:
+        if self._vals is None:
             raise ValueError("Dimension values are not set.")
-        return len(self.vals)
+        return len(self._vals)
 
     def set_vals(self, data: DataFrame) -> None:
         """Set the unique dimension values.
@@ -41,7 +43,7 @@ class Dimension:
             Data to set the unique dimension values from.
 
         """
-        self._vals = np.unique(data[self.name])
+        self._vals = list(np.unique(data[self.name]))
         self._val_index = {val: i for i, val in enumerate(self._vals)}
 
     def get_dummies(self, data: DataFrame, column: str = "intercept") -> DataFrame:
