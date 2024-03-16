@@ -144,8 +144,8 @@ class VarGroup:
         if self.dim is None:
             return [Variable(self.col, priors=self.priors)]
         variables = [
-            Variable(f"{self.col}_{self.dim.name}_{i}", priors=self.priors)
-            for i in range(self.dim.size)
+            Variable(name, priors=self.priors)
+            for name in self.dim.get_dummy_names(self.col)
         ]
         return variables
 
@@ -242,7 +242,7 @@ class Model:
         self.obs = obs
 
         self.dims = tuple(map(lambda kwargs: Dimension(**kwargs), dims))
-        self._dim_dict = {dim.name: dim for dim in self.dims}
+        self._dim_dict = {dim.label: dim for dim in self.dims}
 
         for var_group in var_groups:
             if ("dim" in var_group) and (var_group["dim"] is not None):

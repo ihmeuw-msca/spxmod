@@ -18,13 +18,17 @@ class Dimension:
 
     """
 
-    def __init__(self, name: str | list[str], type: str | list[str]) -> None:
-        self.name = name
-        self.type = type
+    def __init__(
+        self,
+        name: str | list[str],
+        type: str | list[str],
+        label: str | None = None,
+    ) -> None:
+        self.name = [name] if isinstance(name, str) else list(name)
+        self.type = [type] if isinstance(type, str) else list(type)
+        self.label = "*".join(self.name) if label is None else str(label)
 
         self._vals = None
-        self._val_index = None
-        self.label = "*".join(name) if self.multi_indexed else name
 
     @property
     def vals(self) -> list[int | float]:
@@ -38,10 +42,6 @@ class Dimension:
             raise ValueError("Dimension values are not set.")
         return len(self._vals)
 
-    @property
-    def multi_indexed(self) -> bool:
-        return not isinstance(self.name, str)
-
     def set_vals(self, data: DataFrame) -> None:
         """Set the unique dimension values.
 
@@ -51,13 +51,26 @@ class Dimension:
             Data to set the unique dimension values from.
 
         """
-        self._vals = (
-            list(itertools.product(*[np.unique(data[name]) for name in self.name]))
-            if self.multi_indexed
-            else list(np.unique(data[self.name]))
+        combinations = list(
+            itertools.product(*[np.unique(data[name]) for name in self.name])
         )
+        self._vals = pd.DataFrame(combinations, columns=self.name).reset_index()
 
-        self._val_index = {val: i for i, val in enumerate(self._vals)}
+    def get_dummy_names(self, column: str) -> list[str]:
+        """Get the dummy variable names for the dimension.
+
+        Parameters
+        ----------
+        column : str
+            Column name to use for the dummy variable names.
+
+        Returns
+        -------
+        list of str
+            Dummy variable names for the dimension.
+
+        """
+        return [f"{column}_{self.label}_{i}" for i in range(self.size)]
 
     def get_dummies(self, data: DataFrame, column: str = "intercept") -> DataFrame:
         """Get the dummy variables for the dimension.
@@ -76,15 +89,14 @@ class Dimension:
 
         """
         value = data[column].to_numpy()
-        index = (
-            list(zip(*[data[name] for name in self.name]))
-            if self.multi_indexed
-            else data[self.name].to_numpy()
-        )
 
         row_index = np.arange(len(data))
-        col_index = np.array([self._val_index[val] for val in index])
+        col_index = (
+            data[self.name]
+            .merge(self._vals, how="left", on=self.name)["index"]
+            .to_numpy()
+        )
 
         mat = csc_matrix((value, (row_index, col_index)), shape=(len(data), self.size))
-        columns = [f"{column}_{self.label}_{i}" for i in range(self.size)]
+        columns = self.get_dummy_names(column)
         return pd.DataFrame.sparse.from_spmatrix(mat, index=data.index, columns=columns)
