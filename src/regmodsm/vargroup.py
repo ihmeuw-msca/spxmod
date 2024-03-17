@@ -46,7 +46,7 @@ class VarGroup:
         self,
         col: str,
         dim: Dimension | None = None,
-        lam: float = 0.0,
+        lam: float | dict[str, float] = 0.0,
         lam_mean: float = 1e-8,
         gprior: tuple[float, float] = (0.0, np.inf),
         uprior: tuple[float, float] = (-np.inf, np.inf),

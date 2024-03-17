@@ -109,13 +109,13 @@ class Dimension:
         return pd.DataFrame.sparse.from_spmatrix(mat, index=data.index, columns=columns)
 
     def get_smoothing_gprior(
-        self, lam: dict[str, float], scale_by_distance: bool = False
+        self, lam: float | dict[str, float], scale_by_distance: bool = False
     ) -> tuple[NDArray, NDArray]:
         """Get the smoothing Gaussian prior for the dimension.
 
         Parameters
         ----------
-        lam : dict of float
+        lam : float or dict of float
             Smoothing parameters for the dimension.
         scale_by_distance : bool, default False
             Whether to scale the prior vector by the distance between the dimension
@@ -127,19 +127,20 @@ class Dimension:
             Smoothing Gaussian prior matrix and vector.
 
         """
+        lam = {name: lam for name in self.name} if isinstance(lam, float) else lam
         mat = coo_matrix((0, self.size))
         vec = np.empty((0,))
 
-        sub_mats_template = list(map(identity, self._nunique.values()))
-        sub_vecs_template = list(map(np.ones, self._nunique.values()))
+        sub_mats_default = list(map(identity, self._nunique.values()))
+        sub_vecs_default = list(map(np.ones, self._nunique.values()))
 
         for i, name in enumerate(self.name):
-            if self.type[i] == "numerical" and name in lam and lam[name] > 0.0:
-                sub_mats = sub_mats_template.copy()
-                sub_vecs = sub_vecs_template.copy()
+            lam_i = lam.get(name, 0.0)
+            if self.type[i] == "numerical" and lam_i > 0.0:
+                sub_mats, sub_vecs = sub_mats_default.copy(), sub_vecs_default.copy()
                 sub_mats[i] = _get_numerical_gmat(self._nunique[name])
                 sub_vecs[i] = _get_numerical_gvec_sd(
-                    lam[name], self._unique[name], scale_by_distance
+                    lam_i, self._unique[name], scale_by_distance
                 )
                 mat = vstack([mat, functools.reduce(kron, sub_mats)])
                 vec = np.hstack([vec, functools.reduce(_flatten_outer, sub_vecs)])
