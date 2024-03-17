@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
 from pandas import DataFrame
-from scipy.sparse import csc_matrix, identity, kron, vstack
+from scipy.sparse import coo_matrix, csc_matrix, identity, kron, vstack
 
 
 class Dimension:
@@ -33,20 +33,21 @@ class Dimension:
         self.type = [type] if isinstance(type, str) else list(type)
         self.label = "*".join(self.name) if label is None else str(label)
 
-        self._vals = None
-        self._unique_vals = None
+        self._coord = None
+        self._unique = None
+        self._nunique = None
 
     @property
-    def vals(self) -> DataFrame:
-        if self._vals is None:
+    def coord(self) -> DataFrame:
+        if self._coord is None:
             raise ValueError("Dimension values are not set.")
-        return self._vals
+        return self._coord
 
     @property
     def size(self) -> int:
-        if self._vals is None:
+        if self._coord is None:
             raise ValueError("Dimension values are not set.")
-        return len(self._vals)
+        return len(self._coord)
 
     def set_vals(self, data: DataFrame) -> None:
         """Set the unique dimension values.
@@ -57,9 +58,10 @@ class Dimension:
             Data to set the unique dimension values from.
 
         """
-        self._unique_vals = {name: np.unique(data[name]) for name in self.name}
-        combinations = list(itertools.product(*self._unique_vals.values()))
-        self._vals = pd.DataFrame(combinations, columns=self.name).reset_index()
+        self._unique = {name: np.unique(data[name]) for name in self.name}
+        self._nunique = {name: len(self._unique[name]) for name in self.name}
+        combinations = list(itertools.product(*self._unique.values()))
+        self._coord = pd.DataFrame(combinations, columns=self.name).reset_index()
 
     def get_dummy_names(self, column: str) -> list[str]:
         """Get the dummy variable names for the dimension.
@@ -98,7 +100,7 @@ class Dimension:
         row_index = np.arange(len(data))
         col_index = (
             data[self.name]
-            .merge(self.vals, how="left", on=self.name)["index"]
+            .merge(self._coord, how="left", on=self.name)["index"]
             .to_numpy()
         )
 
@@ -125,25 +127,20 @@ class Dimension:
             Smoothing Gaussian prior matrix and vector.
 
         """
-        mat = csc_matrix((0, self.size), dtype=float)
+        mat = coo_matrix((0, self.size))
         vec = np.empty((0,))
 
-        for i, type in enumerate(self.type):
-            if type == "numerical":
-                sub_mats, sub_vecs = [], []
-                for j, name in enumerate(self.name):
-                    unique_vals = self._unique_vals[name]
-                    size = len(unique_vals)
-                    if i == j:
-                        sub_mats.append(_get_numerical_gmat(size))
-                        sub_vecs.append(
-                            _get_numerical_gvec_sd(
-                                lam[name], unique_vals, scale_by_distance
-                            )
-                        )
-                    else:
-                        sub_mats.append(identity(size))
-                        sub_vecs.append(np.ones(size))
+        sub_mats_template = list(map(identity, self._nunique.values()))
+        sub_vecs_template = list(map(np.ones, self._nunique.values()))
+
+        for i, name in enumerate(self.name):
+            if self.type[i] == "numerical" and name in lam and lam[name] > 0.0:
+                sub_mats = sub_mats_template.copy()
+                sub_vecs = sub_vecs_template.copy()
+                sub_mats[i] = _get_numerical_gmat(self._nunique[name])
+                sub_vecs[i] = _get_numerical_gvec_sd(
+                    lam[name], self._unique[name], scale_by_distance
+                )
                 mat = vstack([mat, functools.reduce(kron, sub_mats)])
                 vec = np.hstack([vec, functools.reduce(_flatten_outer, sub_vecs)])
         vec = np.vstack([np.zeros(vec.size), vec])
@@ -186,7 +183,7 @@ def _get_numerical_gmat(size: int) -> csc_matrix:
     value = np.hstack([np.ones(size - 1), -np.ones(size - 1)])
     row_index = np.tile(np.arange(size - 1), 2)
     col_index = np.hstack([np.arange(size - 1), np.arange(1, size)])
-    mat = csc_matrix((value, (row_index, col_index)), shape=(size - 1, size))
+    mat = coo_matrix((value, (row_index, col_index)), shape=(size - 1, size))
     return mat
 
 
