@@ -1,7 +1,6 @@
 import numpy as np
 from numpy.typing import NDArray
 from pandas import DataFrame
-from scipy.sparse import coo_matrix
 from regmodsm.dimension import Dimension
 from regmod.prior import GaussianPrior, Prior, UniformPrior
 from regmod.variable import Variable
@@ -115,7 +114,7 @@ class VarGroup:
 
         """
         if self.dim is None:
-            return coo_matrix((0, self.size)), np.empty(shape=(2, 0))
+            return np.empty((0, self.size)), np.empty(shape=(2, 0))
         return self.dim.get_smoothing_gprior(
             self.lam, self.lam_mean, self.scale_by_distance
         )

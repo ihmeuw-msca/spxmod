@@ -154,6 +154,9 @@ class Dimension:
             mat = vstack([mat, np.repeat(1 / self.size, self.size)])
             vec = np.hstack([vec, [1 / np.sqrt(lam_mean)]])
 
+        # TODO: regmod cannot recognize sparse array as prior, this shouldn't
+        # be necessary in the future
+        mat = mat.toarray()
         vec = np.vstack([np.zeros(vec.size), vec])
         return mat, vec
 
