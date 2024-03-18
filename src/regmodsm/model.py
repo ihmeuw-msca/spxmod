@@ -34,6 +34,19 @@ model, a different intercept is fit for each unique value of
         weights="sample_size"
     )
 
+Fit a RegMod model with intercept values smoothed by age-year. In this
+model, a different intercept is fit for each unique age_group_id-year_id
+pair.
+
+>>> from regmodsm.model import Model
+>>> model = Model(
+        model_type="binomial",
+        obs="obs_rate",
+        dims=[{"name": ["age_group_id", "year_id"], "type": 2*["categorical"]}],
+        var_groups=[{"col": "intercept", "dim": "age_group_id*year_id"}],
+        "weights"="sample_size"
+    )
+
 """
 
 import numpy as np
