@@ -109,7 +109,10 @@ class Dimension:
         return pd.DataFrame.sparse.from_spmatrix(mat, index=data.index, columns=columns)
 
     def get_smoothing_gprior(
-        self, lam: float | dict[str, float], scale_by_distance: bool = False
+        self,
+        lam: float | dict[str, float],
+        lam_mean: float,
+        scale_by_distance: bool = False,
     ) -> tuple[NDArray, NDArray]:
         """Get the smoothing Gaussian prior for the dimension.
 
@@ -117,6 +120,8 @@ class Dimension:
         ----------
         lam : float or dict of float
             Smoothing parameters for the dimension.
+        lam_mean : float
+            Smoothing parameter for the mean of the coefficients.
         scale_by_distance : bool, default False
             Whether to scale the prior vector by the distance between the dimension
             values. Default is False.
@@ -144,6 +149,11 @@ class Dimension:
                 )
                 mat = vstack([mat, functools.reduce(kron, sub_mats)])
                 vec = np.hstack([vec, functools.reduce(_flatten_outer, sub_vecs)])
+
+        if lam_mean > 0.0:
+            mat = vstack([mat, np.repeat(1 / self.size, self.size)])
+            vec = np.hstack([vec, [1 / np.sqrt(lam_mean)]])
+
         vec = np.vstack([np.zeros(vec.size), vec])
         return mat, vec
 

@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
 from pandas import DataFrame
+from scipy.sparse import coo_matrix
 from regmodsm.dimension import Dimension
 from regmod.prior import GaussianPrior, Prior, UniformPrior
 from regmod.variable import Variable
@@ -113,30 +114,11 @@ class VarGroup:
             Smoothing Gaussian prior matrix and vector.
 
         """
-        n = self.size
-        mat = np.empty(shape=(0, n))
-        vec = np.empty(shape=(2, 0))
-
-        if self.dim is not None:
-            if self.dim.type == "numerical" and self.lam > 0.0:
-                mat = np.zeros(shape=(n - 1, n))
-                id0 = np.diag_indices(n - 1)
-                id1 = (id0[0], id0[1] + 1)
-                mat[id0], mat[id1] = -1.0, 1.0
-                vec = np.zeros(shape=(2, n - 1))
-                vec[1] = 1 / np.sqrt(self.lam)
-                if self.scale_by_distance:
-                    delta = np.diff(self.dim.vals)
-                    delta /= delta.min()
-                    vec[1] *= delta
-
-            if self.lam_mean > 0.0:
-                mat = np.vstack([mat, np.repeat(1.0 / n, n)])
-                vec = np.hstack(
-                    [vec, np.array([[0.0], [1.0 / np.sqrt(self.lam_mean)]])]
-                )
-
-        return mat, vec
+        if self.dim is None:
+            return coo_matrix((0, self.size)), np.empty(shape=(2, 0))
+        return self.dim.get_smoothing_gprior(
+            self.lam, self.lam_mean, self.scale_by_distance
+        )
 
     def expand_data(self, data: DataFrame) -> DataFrame:
         """Expand the variable into multiple columns based on the dimension.
