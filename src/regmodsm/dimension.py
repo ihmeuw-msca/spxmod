@@ -11,10 +11,13 @@ class Dimension:
     Parameters
     ----------
     name : str or list of str
-        Name of the dimension column in the data. When it is a list of str, it
-        is used for multi-indexing.
+        Name of the dimension column(s) in the data. When it is a list
+        of str, it is used for multi-indexing.
     type : str or list of str
-        Dimension type. When it is a list of str, it is used for multi-indexing.
+        Dimension type(s), either "numerical" or "categorical". When it
+        is a list of str, it is used for multi-indexing.
+    label : str, optional
+        Name of dimension in the model.
 
     """
 
@@ -93,7 +96,7 @@ class Dimension:
         row_index = np.arange(len(data))
         col_index = (
             data[self.name]
-            .merge(self._vals, how="left", on=self.name)["index"]
+            .merge(self.vals, how="left", on=self.name)["index"]
             .to_numpy()
         )
 
