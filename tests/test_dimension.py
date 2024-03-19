@@ -64,3 +64,22 @@ def test_get_dummies(dim, data):
             }
         )
     )
+
+
+def test_get_smoothing_gprior(dim, data):
+    dim.set_span(data=data)
+    mat, vec = dim.get_smoothing_gprior(lam=1.0, lam_mean=0.0)
+
+    assert np.allclose(
+        mat,
+        np.array(
+            [
+                [1.0, -1.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, -1.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0, -1.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 1.0, -1.0],
+            ]
+        ),
+    )
+
+    assert np.allclose(vec, np.array([[0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]]))
