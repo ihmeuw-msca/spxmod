@@ -62,8 +62,19 @@ class VarGroup:
 
         # transfer lam to gprior when dim is categorical
         if self.dim is not None:
-            if self.dim.type == "categorical" and self.lam > 0.0:
-                self._gprior = (0.0, 1.0 / np.sqrt(self.lam))
+            if isinstance(self.lam, float):
+                self.lam = {name: self.lam for name in self.dim.name}
+
+            info = DataFrame(
+                dict(
+                    name=self.dim.name,
+                    type=self.dim.type,
+                    lam=[self.lam.get(name, 0.0) for name in self.dim.name],
+                )
+            ).query("type == 'categorical' and lam > 0.0")
+            # TODO: this behavior is up-to-discussion
+            if len(info) > 0:
+                self._gprior = (0.0, 1.0 / np.sqrt(info["lam"].prod()))
 
     @property
     def gprior(self) -> GaussianPrior:
