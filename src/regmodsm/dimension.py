@@ -33,23 +33,23 @@ class Dimension:
         self.type = [type] if isinstance(type, str) else list(type)
         self.label = "*".join(self.name) if label is None else str(label)
 
-        self._coord = None
+        self._span = None
         self._unique = None
         self._nunique = None
 
     @property
-    def coord(self) -> DataFrame:
-        if self._coord is None:
+    def span(self) -> DataFrame:
+        if self._span is None:
             raise ValueError("Dimension values are not set.")
-        return self._coord
+        return self._span
 
     @property
     def size(self) -> int:
-        if self._coord is None:
+        if self._span is None:
             raise ValueError("Dimension values are not set.")
-        return len(self._coord)
+        return len(self._span)
 
-    def set_vals(self, data: DataFrame) -> None:
+    def set_span(self, data: DataFrame) -> None:
         """Set the unique dimension values.
 
         Parameters
@@ -61,7 +61,7 @@ class Dimension:
         self._unique = {name: np.unique(data[name]) for name in self.name}
         self._nunique = {name: len(self._unique[name]) for name in self.name}
         combinations = list(itertools.product(*self._unique.values()))
-        self._coord = pd.DataFrame(combinations, columns=self.name).reset_index()
+        self._span = pd.DataFrame(combinations, columns=self.name).reset_index()
 
     def get_dummy_names(self, column: str) -> list[str]:
         """Get the dummy variable names for the dimension.
@@ -100,7 +100,7 @@ class Dimension:
         row_index = np.arange(len(data))
         col_index = (
             data[self.name]
-            .merge(self._coord, how="left", on=self.name)["index"]
+            .merge(self._span, how="left", on=self.name)["index"]
             .to_numpy()
         )
 

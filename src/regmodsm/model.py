@@ -116,9 +116,9 @@ class Model:
 
         self._model: RegmodModel | None = None
 
-    def _set_dim_vals(self, data: DataFrame) -> None:
+    def _set_dim_span(self, data: DataFrame) -> None:
         for dim in self.dims:
-            dim.set_vals(data)
+            dim.set_span(data)
 
     def _get_smoothing_prior(self) -> tuple[NDArray, NDArray]:
         prior_mats = []
@@ -193,9 +193,9 @@ class Model:
 
         """
         if data_dim_vals is None:
-            self._set_dim_vals(data)
+            self._set_dim_span(data)
         else:
-            self._set_dim_vals(data_dim_vals)
+            self._set_dim_span(data_dim_vals)
         self._model = self._get_model()
         data = self._expand_data(data)
         self._model.attach_df(data)
