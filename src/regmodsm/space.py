@@ -30,6 +30,9 @@ class Space:
         self.name = "*".join(self.dim_names) if name is None else name
         self._span: DataFrame | None = None
 
+        if not self.dims:
+            self.set_span(DataFrame())
+
     @property
     def span(self) -> DataFrame:
         """The grid of the space."""
@@ -66,6 +69,11 @@ class Space:
         grid = itertools.product(*[dim.span for dim in self.dims])
         self._span = DataFrame(data=grid, columns=self.dim_names)
 
+    def create_encoded_names(self, column: str) -> list[str]:
+        if not self.dims:
+            return [column]
+        return [f"{column}_{self.name}_{i}" for i in range(self.size)]
+
     def encode(self, data: DataFrame, column: str = "intercept") -> DataFrame:
         """Encode the data into the space grid.
 
@@ -83,6 +91,8 @@ class Space:
             Encoded dataframe.
 
         """
+        if not self.dims:
+            return DataFrame(index=data.index)
         val = data[column].to_numpy()
         row = np.arange(len(data))
         col = (
@@ -92,8 +102,9 @@ class Space:
             .to_numpy()
         )
         mat = csc_matrix((val, (row, col)), shape=(len(data), self.size))
-        columns = [f"{column}_{self.name}_{i}" for i in range(self.size)]
-        return DataFrame.sparse.from_spmatrix(mat, index=data.index, columns=columns)
+        return DataFrame.sparse.from_spmatrix(
+            mat, index=data.index, columns=self.create_encoded_names(column)
+        )
 
     def create_smoothing_prior(
         self,

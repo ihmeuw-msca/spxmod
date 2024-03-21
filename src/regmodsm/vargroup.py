@@ -44,16 +44,15 @@ class VarGroup:
     ----
     * change VarGroup to a better class name
     * change all priors to use dictionary rather than regmod class
-    * pre-define a empty space for default behavior
 
     """
 
     def __init__(
         self,
         name: str,
-        space: Space | None = None,
+        space: Space = Space(),
         lam: float | dict[str, float] = 0.0,
-        lam_mean: float = 1e-8,
+        lam_mean: float = 0.0,
         gprior: tuple[float, float] = (0.0, np.inf),
         uprior: tuple[float, float] = (-np.inf, np.inf),
         scale_by_distance: bool = False,
@@ -100,19 +99,13 @@ class VarGroup:
     @property
     def size(self) -> int:
         """Number of variables in the variable group."""
-        if self.space is None:
-            return 1
         return self.space.size
 
     def get_variables(self) -> list[Variable]:
         """Returns the list of variables in the variable group."""
-        if self.space is None:
-            return [Variable(self.name, priors=self.priors)]
         variables = [
             Variable(name, priors=self.priors)
-            for name in [
-                f"{self.name}_{self.space.name}_{i}" for i in range(self.space.size)
-            ]
+            for name in self.space.create_encoded_names(self.name)
         ]
         return variables
 
@@ -128,12 +121,10 @@ class VarGroup:
 
         Returns
         -------
-        tuple[NDArray, NDArray]
+        dict[str, NDArray]
             Smoothing Gaussian prior matrix and vector.
 
         """
-        if self.space is None:
-            return dict(mat=np.empty((0, self.size)), sd=np.empty(shape=(0,)))
         return self.space.create_smoothing_prior(
             self.lam, self.lam_mean, self.scale_by_distance
         )
@@ -152,6 +143,4 @@ class VarGroup:
             Encoded variable columns.
 
         """
-        if self.space is None:
-            return DataFrame(index=data.index)
         return self.space.encode(data, column=self.name)

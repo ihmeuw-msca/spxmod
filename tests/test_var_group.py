@@ -37,10 +37,10 @@ def test_categorical_lam(data, dimensions, lam, gprior_sd):
 @pytest.mark.parametrize(
     ("lam", "scale_by_distance", "smooth_gprior_sd"),
     [
-        (0.0, False, np.array([1.0 / np.sqrt(1e-8)])),
-        (0.0, True, np.array([1.0 / np.sqrt(1e-8)])),
-        (1.0, False, np.array([1.0, 1.0, 1.0 / np.sqrt(1e-8)])),
-        (1.0, True, np.array([1.0, 3.0, 1.0 / np.sqrt(1e-8)])),
+        (0.0, False, np.array([])),
+        (0.0, True, np.array([])),
+        (1.0, False, np.array([1.0, 1.0])),
+        (1.0, True, np.array([1.0, 3.0])),
     ],
 )
 def test_numerical_lam(data, dimensions, lam, scale_by_distance, smooth_gprior_sd):
