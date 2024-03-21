@@ -124,7 +124,7 @@ class Model:
         prior_mats = []
         prior_sds = []
         for var_group in self.var_groups:
-            prior = var_group.get_smoothing_gprior()
+            prior = var_group.create_smoothing_prior()
             prior_mats.append(prior["mat"])
             prior_sds.append(prior["sd"])
         prior_mat = block_diag(*prior_mats)

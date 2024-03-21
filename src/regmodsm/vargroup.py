@@ -44,7 +44,6 @@ class VarGroup:
     ----
     * change VarGroup to a better class name
     * change all priors to use dictionary rather than regmod class
-    * change get_smoothing_gprior to create_smoothing_prior
     * change expand_data to encode
     * pre-define a empty space for default behavior
 
@@ -118,7 +117,7 @@ class VarGroup:
         ]
         return variables
 
-    def get_smoothing_gprior(self) -> tuple[NDArray, NDArray]:
+    def create_smoothing_prior(self) -> dict[str, NDArray]:
         """Returns the smoothing Gaussian prior for the variable group.
 
         If the dimension is numerical and lam > 0, a Gaussian prior with
