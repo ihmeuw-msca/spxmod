@@ -61,7 +61,7 @@ from scipy.linalg import block_diag
 from scipy.stats import norm
 
 from regmodsm.linalg import get_pred_var
-from regmodsm.dimension import Dimension
+from regmodsm.space import Space
 from regmodsm.vargroup import VarGroup
 
 _model_dict = {
@@ -80,8 +80,8 @@ class Model:
         RegMod model type.
     obs : str
         Name of the observation column in the data.
-    dims : list[dict]
-        List of dictionaries containing dimension names and arguments.
+    spaces : list[dict]
+        List of dictionaries containing space names and arguments.
     var_groups : list[dict]
         List of dictionaries containing variable group names and arguments.
     weights : str, optional
@@ -95,7 +95,7 @@ class Model:
         self,
         model_type: str,
         obs: str,
-        dims: list[dict],
+        spaces: list[dict],
         var_groups: list[dict],
         weights: str = "weight",
         param_specs: dict | None = None,
@@ -103,33 +103,33 @@ class Model:
         self.model_type = model_type
         self.obs = obs
 
-        self.dims = tuple(map(lambda kwargs: Dimension(**kwargs), dims))
-        self._dim_dict = {dim.label: dim for dim in self.dims}
+        self.spaces = tuple([Space(**kwargs) for kwargs in spaces])
+        self._space_dict = {space.name: space for space in self.spaces}
 
         for var_group in var_groups:
-            if ("dim" in var_group) and (var_group["dim"] is not None):
-                var_group["dim"] = self._dim_dict[var_group["dim"]]
-        self.var_groups = tuple(map(lambda kwargs: VarGroup(**kwargs), var_groups))
+            if ("space" in var_group) and (var_group["space"] is not None):
+                var_group["space"] = self._space_dict[var_group["space"]]
+        self.var_groups = tuple([VarGroup(**kwargs) for kwargs in var_groups])
 
         self.weights = weights
         self.param_specs = param_specs or {}
 
         self._model: RegmodModel | None = None
 
-    def _set_dim_span(self, data: DataFrame) -> None:
-        for dim in self.dims:
-            dim.set_span(data)
+    def _set_space_span(self, data: DataFrame) -> None:
+        for space in self.spaces:
+            space.set_span(data)
 
     def _get_smoothing_prior(self) -> tuple[NDArray, NDArray]:
         prior_mats = []
-        prior_vecs = []
+        prior_sds = []
         for var_group in self.var_groups:
-            mat, vec = var_group.get_smoothing_gprior()
-            prior_mats.append(mat)
-            prior_vecs.append(vec)
+            prior = var_group.get_smoothing_gprior()
+            prior_mats.append(prior["mat"])
+            prior_sds.append(prior["sd"])
         prior_mat = block_diag(*prior_mats)
-        prior_vec = np.hstack(prior_vecs)
-        return prior_mat, prior_vec
+        prior_sds = np.hstack(prior_sds)
+        return prior_mat, prior_sds
 
     def _get_model(self) -> RegmodModel:
         data = Data(
@@ -142,10 +142,10 @@ class Model:
             variables.extend(var_group.get_variables())
 
         linear_gpriors = []
-        prior_mat, prior_vec = self._get_smoothing_prior()
+        prior_mat, prior_sds = self._get_smoothing_prior()
         if len(prior_mat) > 0:
             linear_gpriors = [
-                LinearGaussianPrior(mat=prior_mat, mean=prior_vec[0], sd=prior_vec[1])
+                LinearGaussianPrior(mat=prior_mat, mean=0.0, sd=prior_sds)
             ]
 
         model_class = _model_dict[self.model_type]
@@ -176,7 +176,7 @@ class Model:
     def fit(
         self,
         data: DataFrame,
-        data_dim_vals: DataFrame | None = None,
+        data_space_span: DataFrame | None = None,
         **optimizer_options,
     ) -> None:
         """Fit the model to the data.
@@ -185,17 +185,17 @@ class Model:
         ----------
         data : DataFrame
             Data to fit the model to.
-        data_dim_vals : DataFrame, optional
+        data_space_span : DataFrame, optional
             Data containing the unique dimension values. If None, values
             are extracted from the data. Default is None.
         optimizer_options
             Additional options for the optimizer.
 
         """
-        if data_dim_vals is None:
-            self._set_dim_span(data)
+        if data_space_span is None:
+            self._set_space_span(data)
         else:
-            self._set_dim_span(data_dim_vals)
+            self._set_space_span(data_space_span)
         self._model = self._get_model()
         data = self._expand_data(data)
         self._model.attach_df(data)

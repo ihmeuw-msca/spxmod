@@ -1,9 +1,9 @@
 import numpy as np
-from numpy.typing import NDArray
-from pandas import DataFrame
-from regmodsm.dimension import Dimension
 from regmod.prior import GaussianPrior, Prior, UniformPrior
 from regmod.variable import Variable
+from regmodsm.dimension import CategoricalDimension
+from regmodsm.space import Space
+from regmodsm._typing import DataFrame, NDArray
 
 
 class VarGroup:
@@ -13,8 +13,8 @@ class VarGroup:
     ----------
     col : str
         Name of the variable column in the data.
-    dim : Dimension, optional
-        Dimension to partition the variable on. If None, the variable is
+    space : Space, optional
+        Space to partition the variable on. If None, the variable is
         not partitioned.
     lam : float, optional
         Regularization parameter for the coefficients in the variable
@@ -40,12 +40,21 @@ class VarGroup:
         between the neighboring values along the dimension. For
         numerical dimensions only. Default is False.
 
+    TODO
+    ----
+    * change VarGroup to a better class name
+    * change col to name
+    * change all priors to use dictionary rather than regmod class
+    * change get_smoothing_gprior to create_smoothing_prior
+    * change expand_data to encode
+    * pre-define a empty space for default behavior
+
     """
 
     def __init__(
         self,
         col: str,
-        dim: Dimension | None = None,
+        space: Space | None = None,
         lam: float | dict[str, float] = 0.0,
         lam_mean: float = 1e-8,
         gprior: tuple[float, float] = (0.0, np.inf),
@@ -53,7 +62,7 @@ class VarGroup:
         scale_by_distance: bool = False,
     ) -> None:
         self.col = col
-        self.dim = dim
+        self.space = space
         self.lam = lam
         self.lam_mean = lam_mean
         self._gprior = gprior
@@ -61,16 +70,16 @@ class VarGroup:
         self.scale_by_distance = scale_by_distance
 
         # transfer lam to gprior when dim is categorical
-        if self.dim is not None:
+        if self.space is not None:
             if isinstance(self.lam, float):
-                self.lam = {name: self.lam for name in self.dim.name}
+                self.lam = {name: self.lam for name in self.space.dim_names}
 
             # TODO: this behavior is up-to-discussion
             lam_cat = sum(
                 [
-                    self.lam.get(name, 0.0)
-                    for name, type in zip(self.dim.name, self.dim.type)
-                    if type == "categorical"
+                    self.lam.get(dim.name, 0.0)
+                    for dim in self.space.dims
+                    if isinstance(dim, CategoricalDimension)
                 ]
             )
             if lam_cat > 0:
@@ -94,17 +103,19 @@ class VarGroup:
     @property
     def size(self) -> int:
         """Number of variables in the variable group."""
-        if self.dim is None:
+        if self.space is None:
             return 1
-        return self.dim.size
+        return self.space.size
 
     def get_variables(self) -> list[Variable]:
         """Returns the list of variables in the variable group."""
-        if self.dim is None:
+        if self.space is None:
             return [Variable(self.col, priors=self.priors)]
         variables = [
             Variable(name, priors=self.priors)
-            for name in self.dim.get_dummy_names(self.col)
+            for name in [
+                f"{self.col}_{self.space.name}_{i}" for i in range(self.space.size)
+            ]
         ]
         return variables
 
@@ -124,9 +135,9 @@ class VarGroup:
             Smoothing Gaussian prior matrix and vector.
 
         """
-        if self.dim is None:
-            return np.empty((0, self.size)), np.empty(shape=(2, 0))
-        return self.dim.get_smoothing_gprior(
+        if self.space is None:
+            return dict(mat=np.empty((0, self.size)), sd=np.empty(shape=(0,)))
+        return self.space.create_smoothing_prior(
             self.lam, self.lam_mean, self.scale_by_distance
         )
 
@@ -144,6 +155,6 @@ class VarGroup:
             Expanded variable columns.
 
         """
-        if self.dim is None:
+        if self.space is None:
             return DataFrame(index=data.index)
-        return self.dim.get_dummies(data, column=self.col)
+        return self.space.encode(data, column=self.col)

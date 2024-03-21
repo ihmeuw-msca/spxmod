@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from regmodsm.model import Dimension, VarGroup
+from regmodsm.space import Space
+from regmodsm.vargroup import VarGroup
 
 
 @pytest.fixture
@@ -18,29 +19,21 @@ def data() -> pd.DataFrame:
 
 
 @pytest.fixture
-def dimensions(data) -> dict[str, Dimension]:
-    dimensions = {
-        "age": Dimension(name="age", type="numerical"),
-        "loc": Dimension(name="loc", type="categorical"),
+def dimensions() -> dict[str, dict]:
+    return {
+        "age": dict(name="age", dim_type="numerical"),
+        "loc": dict(name="loc", dim_type="categorical"),
     }
-    for dim in dimensions.values():
-        dim.set_span(data=data)
-    return dimensions
 
 
-@pytest.mark.xfail(
-    reason="lam for multi-indexed dimensions need to be addressed in another PR"
-)
 @pytest.mark.parametrize(("lam", "gprior_sd"), [(0.0, np.inf), (1.0, 1.0)])
-def test_categorical_lam(dimensions, lam, gprior_sd):
-    dim = dimensions["loc"]
-    var_group = VarGroup(col="intercept", dim=dim, lam=lam)
+def test_categorical_lam(data, dimensions, lam, gprior_sd):
+    space = Space(dims=[dimensions["loc"]])
+    space.set_span(data)
+    var_group = VarGroup(col="intercept", space=space, lam=lam)
     assert var_group.gprior.sd == gprior_sd
 
 
-@pytest.mark.xfail(
-    reason="lam for multi-indexed dimensions need to be addressed in another PR"
-)
 @pytest.mark.parametrize(
     ("lam", "scale_by_distance", "smooth_gprior_sd"),
     [
@@ -50,18 +43,20 @@ def test_categorical_lam(dimensions, lam, gprior_sd):
         (1.0, True, np.array([1.0, 3.0, 1.0 / np.sqrt(1e-8)])),
     ],
 )
-def test_numerical_lam(dimensions, lam, scale_by_distance, smooth_gprior_sd):
-    dim = dimensions["age"]
+def test_numerical_lam(data, dimensions, lam, scale_by_distance, smooth_gprior_sd):
+    space = Space(dims=[dimensions["age"]])
+    space.set_span(data)
     var_group = VarGroup(
-        col="sdi", dim=dim, lam=lam, scale_by_distance=scale_by_distance
+        col="sdi", space=space, lam=lam, scale_by_distance=scale_by_distance
     )
-    _, vec = var_group.get_smoothing_gprior()
-    assert np.allclose(vec[1], smooth_gprior_sd)
+    prior = var_group.get_smoothing_gprior()
+    assert np.allclose(prior["sd"], smooth_gprior_sd)
 
 
 def test_expand_data(data, dimensions):
-    dim = dimensions["age"]
-    var_group = VarGroup(col="sdi", dim=dim, lam=1.0)
+    space = Space(dims=[dimensions["age"]])
+    space.set_span(data)
+    var_group = VarGroup(col="sdi", space=space, lam=1.0)
     expanded_data = var_group.expand_data(data)
     assert expanded_data.shape == (6, 3)
     assert np.allclose(expanded_data["sdi_age_0"], [1, 0, 0, 1, 0, 0])
