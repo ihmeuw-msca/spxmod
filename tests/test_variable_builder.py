@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from regmodsm.space import Space
-from regmodsm.vargroup import VarGroup
+from regmodsm.variable_builder import VariableBuilder
 
 
 @pytest.fixture
@@ -30,8 +30,8 @@ def dimensions() -> dict[str, dict]:
 def test_categorical_lam(data, dimensions, lam, gprior_sd):
     space = Space(dims=[dimensions["loc"]])
     space.set_span(data)
-    var_group = VarGroup(name="intercept", space=space, lam=lam)
-    assert var_group.gprior.sd == gprior_sd
+    var_builder = VariableBuilder(name="intercept", space=space, lam=lam)
+    assert var_builder.gprior.sd == gprior_sd
 
 
 @pytest.mark.parametrize(
@@ -46,18 +46,18 @@ def test_categorical_lam(data, dimensions, lam, gprior_sd):
 def test_numerical_lam(data, dimensions, lam, scale_by_distance, smooth_gprior_sd):
     space = Space(dims=[dimensions["age"]])
     space.set_span(data)
-    var_group = VarGroup(
+    var_builder = VariableBuilder(
         name="sdi", space=space, lam=lam, scale_by_distance=scale_by_distance
     )
-    prior = var_group.build_smoothing_prior()
+    prior = var_builder.build_smoothing_prior()
     assert np.allclose(prior["sd"], smooth_gprior_sd)
 
 
 def test_encode(data, dimensions):
     space = Space(dims=[dimensions["age"]])
     space.set_span(data)
-    var_group = VarGroup(name="sdi", space=space, lam=1.0)
-    expanded_data = var_group.encode(data)
+    var_builder = VariableBuilder(name="sdi", space=space, lam=1.0)
+    expanded_data = var_builder.encode(data)
     assert expanded_data.shape == (6, 3)
     assert np.allclose(expanded_data["sdi_age_0"], [1, 0, 0, 1, 0, 0])
     assert np.allclose(expanded_data["sdi_age_1"], [0, 0, 2, 0, 0, 2])

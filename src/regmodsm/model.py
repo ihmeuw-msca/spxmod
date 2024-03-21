@@ -16,7 +16,7 @@ coefficients to have positive values.
         model_type="binomial",
         obs="obs_rate",
         dims=[{"name": "age_mid", "type": "numerical"}],
-        var_groups=[{"col": "mean_BMI", "dim": "age_mid", "lam": 1.0, "uprior": (0.0, np.inf)}],
+        var_builders=[{"col": "mean_BMI", "dim": "age_mid", "lam": 1.0, "uprior": (0.0, np.inf)}],
         weights="sample_size"
     )
 
@@ -30,7 +30,7 @@ model, a different intercept is fit for each unique value of
         model_type="binomial",
         obs="obs_rate",
         dims=[{"name": "region_id", "type": "categorical"}],
-        var_groups=[{"col": "intercept", "dim": "region_id", "lam_mean": 1.0}],
+        var_builders=[{"col": "intercept", "dim": "region_id", "lam_mean": 1.0}],
         weights="sample_size"
     )
 
@@ -43,7 +43,7 @@ pair.
         model_type="binomial",
         obs="obs_rate",
         dims=[{"name": ["age_group_id", "year_id"], "type": 2*["categorical"]}],
-        var_groups=[{"col": "intercept", "dim": "age_group_id*year_id"}],
+        var_builders=[{"col": "intercept", "dim": "age_group_id*year_id"}],
         "weights"="sample_size"
     )
 
@@ -62,7 +62,7 @@ from scipy.stats import norm
 
 from regmodsm.linalg import get_pred_var
 from regmodsm.space import Space
-from regmodsm.vargroup import VarGroup
+from regmodsm.variable_builder import VariableBuilder
 
 _model_dict = {
     "binomial": BinomialModel,
@@ -82,7 +82,7 @@ class Model:
         Name of the observation column in the data.
     spaces : list[dict]
         List of dictionaries containing space names and arguments.
-    var_groups : list[dict]
+    var_builders : list[dict]
         List of dictionaries containing variable group names and arguments.
     weights : str, optional
         Name of the weight column in the data. Default is "weight".
@@ -96,7 +96,7 @@ class Model:
         model_type: str,
         obs: str,
         spaces: list[dict],
-        var_groups: list[dict],
+        var_builders: list[dict],
         weights: str = "weight",
         param_specs: dict | None = None,
     ) -> None:
@@ -106,10 +106,12 @@ class Model:
         self.spaces = tuple([Space(**kwargs) for kwargs in spaces])
         self._space_dict = {space.name: space for space in self.spaces}
 
-        for var_group in var_groups:
-            if ("space" in var_group) and (var_group["space"] is not None):
-                var_group["space"] = self._space_dict[var_group["space"]]
-        self.var_groups = tuple([VarGroup(**kwargs) for kwargs in var_groups])
+        for var_builder in var_builders:
+            if ("space" in var_builder) and (var_builder["space"] is not None):
+                var_builder["space"] = self._space_dict[var_builder["space"]]
+        self.var_builders = tuple(
+            [VariableBuilder(**kwargs) for kwargs in var_builders]
+        )
 
         self.weights = weights
         self.param_specs = param_specs or {}
@@ -123,8 +125,8 @@ class Model:
     def _get_smoothing_prior(self) -> tuple[NDArray, NDArray]:
         prior_mats = []
         prior_sds = []
-        for var_group in self.var_groups:
-            prior = var_group.build_smoothing_prior()
+        for var_builder in self.var_builders:
+            prior = var_builder.build_smoothing_prior()
             prior_mats.append(prior["mat"])
             prior_sds.append(prior["sd"])
         prior_mat = block_diag(*prior_mats)
@@ -138,8 +140,8 @@ class Model:
         )
 
         variables = []
-        for var_group in self.var_groups:
-            variables.extend(var_group.get_variables())
+        for var_builder in self.var_builders:
+            variables.extend(var_builder.build_variables())
 
         linear_gpriors = []
         prior_mat, prior_sds = self._get_smoothing_prior()
@@ -167,8 +169,8 @@ class Model:
         data = data.copy()
         data["intercept"] = 1.0
 
-        for var_group in self.var_groups:
-            df_covs = var_group.encode(data)
+        for var_builder in self.var_builders:
+            df_covs = var_builder.encode(data)
             data = pd.concat([data, df_covs], axis=1)
 
         return data

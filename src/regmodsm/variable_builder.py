@@ -6,8 +6,9 @@ from regmodsm.space import Space
 from regmodsm._typing import DataFrame, NDArray
 
 
-class VarGroup:
-    """Variable group created by partitioning a variable along a dimension.
+class VariableBuilder:
+    """Variable builder to build encoded variables based on the provided space
+    and prior information.
 
     Parameters
     ----------
@@ -42,7 +43,6 @@ class VarGroup:
 
     TODO
     ----
-    * change VarGroup to a better class name
     * change all priors to use dictionary rather than regmod class
 
     """
@@ -101,7 +101,7 @@ class VarGroup:
         """Number of variables in the variable group."""
         return self.space.size
 
-    def get_variables(self) -> list[Variable]:
+    def build_variables(self) -> list[Variable]:
         """Returns the list of variables in the variable group."""
         variables = [
             Variable(name, priors=self.priors)
