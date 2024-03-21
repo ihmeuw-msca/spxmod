@@ -105,11 +105,11 @@ class VarGroup:
         """Returns the list of variables in the variable group."""
         variables = [
             Variable(name, priors=self.priors)
-            for name in self.space.create_encoded_names(self.name)
+            for name in self.space.build_encoded_names(self.name)
         ]
         return variables
 
-    def create_smoothing_prior(self) -> dict[str, NDArray]:
+    def build_smoothing_prior(self) -> dict[str, NDArray]:
         """Returns the smoothing Gaussian prior for the variable group.
 
         If the dimension is numerical and lam > 0, a Gaussian prior with
@@ -125,7 +125,7 @@ class VarGroup:
             Smoothing Gaussian prior matrix and vector.
 
         """
-        return self.space.create_smoothing_prior(
+        return self.space.build_smoothing_prior(
             self.lam, self.lam_mean, self.scale_by_distance
         )
 

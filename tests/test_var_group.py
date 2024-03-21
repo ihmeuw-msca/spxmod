@@ -49,7 +49,7 @@ def test_numerical_lam(data, dimensions, lam, scale_by_distance, smooth_gprior_s
     var_group = VarGroup(
         name="sdi", space=space, lam=lam, scale_by_distance=scale_by_distance
     )
-    prior = var_group.create_smoothing_prior()
+    prior = var_group.build_smoothing_prior()
     assert np.allclose(prior["sd"], smooth_gprior_sd)
 
 

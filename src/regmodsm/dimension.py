@@ -58,7 +58,7 @@ class NumericalDimension(Dimension):
 
     """
 
-    def create_smoothing_mat(self) -> coo_matrix:
+    def build_smoothing_mat(self) -> coo_matrix:
         """Create the smoothing prior matrix for the numerical dimension.
 
         Returns
@@ -72,7 +72,7 @@ class NumericalDimension(Dimension):
         col = np.hstack([np.arange(self.size - 1), np.arange(1, self.size)])
         return coo_matrix((val, (row, col)), shape=(self.size - 1, self.size))
 
-    def create_smoothing_sd(self, lam: float, scale_by_distance: bool) -> NDArray:
+    def build_smoothing_sd(self, lam: float, scale_by_distance: bool) -> NDArray:
         """Create the smoothing prior standard deviation vector for the numerical dimension.
 
         Parameters
@@ -97,7 +97,7 @@ class NumericalDimension(Dimension):
         return sd
 
 
-def create_dimension(name: str, dim_type: str) -> Dimension:
+def build_dimension(name: str, dim_type: str) -> Dimension:
     """Create a dimension based on the dimension type.
 
     Parameters

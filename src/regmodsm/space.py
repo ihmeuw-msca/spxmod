@@ -2,7 +2,7 @@ import itertools
 import functools
 import numpy as np
 from scipy.sparse import csc_matrix, coo_matrix, identity, kron, vstack
-from regmodsm.dimension import create_dimension, NumericalDimension
+from regmodsm.dimension import build_dimension, NumericalDimension
 from regmodsm._typing import DataFrame, NDArray
 
 
@@ -26,7 +26,7 @@ class Space:
         name: str | None = None,
         dims: list[dict] | None = None,
     ) -> None:
-        self.dims = [create_dimension(**dim) for dim in (dims or [])]
+        self.dims = [build_dimension(**dim) for dim in (dims or [])]
         self.name = "*".join(self.dim_names) if name is None else name
         self._span: DataFrame | None = None
 
@@ -69,7 +69,7 @@ class Space:
         grid = itertools.product(*[dim.span for dim in self.dims])
         self._span = DataFrame(data=grid, columns=self.dim_names)
 
-    def create_encoded_names(self, column: str) -> list[str]:
+    def build_encoded_names(self, column: str) -> list[str]:
         if not self.dims:
             return [column]
         return [f"{column}_{self.name}_{i}" for i in range(self.size)]
@@ -103,10 +103,10 @@ class Space:
         )
         mat = csc_matrix((val, (row, col)), shape=(len(data), self.size))
         return DataFrame.sparse.from_spmatrix(
-            mat, index=data.index, columns=self.create_encoded_names(column)
+            mat, index=data.index, columns=self.build_encoded_names(column)
         )
 
-    def create_smoothing_prior(
+    def build_smoothing_prior(
         self,
         lam: float | dict[str, float] = 0.0,
         lam_mean: float = 0.0,
@@ -141,11 +141,11 @@ class Space:
             lam_i = lam[dim.name]
             if lam_i > 0.0 and isinstance(dim, NumericalDimension):
                 mats = mats_default.copy()
-                mats[i] = dim.create_smoothing_mat()
+                mats[i] = dim.build_smoothing_mat()
                 mat = vstack([mat, functools.reduce(kron, mats)])
 
                 sds = sds_default.copy()
-                sds[i] = dim.create_smoothing_sd(lam_i, scale_by_distance)
+                sds[i] = dim.build_smoothing_sd(lam_i, scale_by_distance)
                 sd = np.hstack([sd, functools.reduce(_flatten_outer, sds)])
 
         if lam_mean > 0.0:

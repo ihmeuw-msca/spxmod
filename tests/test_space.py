@@ -56,9 +56,9 @@ def test_encode(space, data):
     )
 
 
-def test_create_smoothing_prior(space, data):
+def test_build_smoothing_prior(space, data):
     space.set_span(data=data)
-    prior = space.create_smoothing_prior(lam=1.0, lam_mean=0.0)
+    prior = space.build_smoothing_prior(lam=1.0, lam_mean=0.0)
 
     assert np.allclose(
         prior["mat"],
