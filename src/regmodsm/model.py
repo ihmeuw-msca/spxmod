@@ -168,7 +168,7 @@ class Model:
         data["intercept"] = 1.0
 
         for var_group in self.var_groups:
-            df_covs = var_group.expand_data(data)
+            df_covs = var_group.encode(data)
             data = pd.concat([data, df_covs], axis=1)
 
         return data

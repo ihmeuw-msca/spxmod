@@ -53,11 +53,11 @@ def test_numerical_lam(data, dimensions, lam, scale_by_distance, smooth_gprior_s
     assert np.allclose(prior["sd"], smooth_gprior_sd)
 
 
-def test_expand_data(data, dimensions):
+def test_encode(data, dimensions):
     space = Space(dims=[dimensions["age"]])
     space.set_span(data)
     var_group = VarGroup(name="sdi", space=space, lam=1.0)
-    expanded_data = var_group.expand_data(data)
+    expanded_data = var_group.encode(data)
     assert expanded_data.shape == (6, 3)
     assert np.allclose(expanded_data["sdi_age_0"], [1, 0, 0, 1, 0, 0])
     assert np.allclose(expanded_data["sdi_age_1"], [0, 0, 2, 0, 0, 2])

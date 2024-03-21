@@ -44,7 +44,6 @@ class VarGroup:
     ----
     * change VarGroup to a better class name
     * change all priors to use dictionary rather than regmod class
-    * change expand_data to encode
     * pre-define a empty space for default behavior
 
     """
@@ -139,18 +138,18 @@ class VarGroup:
             self.lam, self.lam_mean, self.scale_by_distance
         )
 
-    def expand_data(self, data: DataFrame) -> DataFrame:
-        """Expand the variable into multiple nameumns based on the dimension.
+    def encode(self, data: DataFrame) -> DataFrame:
+        """Encode variable column based on the space.
 
         Parameters
         ----------
         data : DataFrame
-            Data containing the variable nameumn.
+            Data containing the variable column.
 
         Returns
         -------
         DataFrame
-            Expanded variable nameumns.
+            Encoded variable columns.
 
         """
         if self.space is None:
