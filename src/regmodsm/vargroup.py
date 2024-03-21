@@ -11,7 +11,7 @@ class VarGroup:
 
     Parameters
     ----------
-    col : str
+    name : str
         Name of the variable column in the data.
     space : Space, optional
         Space to partition the variable on. If None, the variable is
@@ -43,7 +43,6 @@ class VarGroup:
     TODO
     ----
     * change VarGroup to a better class name
-    * change col to name
     * change all priors to use dictionary rather than regmod class
     * change get_smoothing_gprior to create_smoothing_prior
     * change expand_data to encode
@@ -53,7 +52,7 @@ class VarGroup:
 
     def __init__(
         self,
-        col: str,
+        name: str,
         space: Space | None = None,
         lam: float | dict[str, float] = 0.0,
         lam_mean: float = 1e-8,
@@ -61,7 +60,7 @@ class VarGroup:
         uprior: tuple[float, float] = (-np.inf, np.inf),
         scale_by_distance: bool = False,
     ) -> None:
-        self.col = col
+        self.name = name
         self.space = space
         self.lam = lam
         self.lam_mean = lam_mean
@@ -110,11 +109,11 @@ class VarGroup:
     def get_variables(self) -> list[Variable]:
         """Returns the list of variables in the variable group."""
         if self.space is None:
-            return [Variable(self.col, priors=self.priors)]
+            return [Variable(self.name, priors=self.priors)]
         variables = [
             Variable(name, priors=self.priors)
             for name in [
-                f"{self.col}_{self.space.name}_{i}" for i in range(self.space.size)
+                f"{self.name}_{self.space.name}_{i}" for i in range(self.space.size)
             ]
         ]
         return variables
@@ -142,19 +141,19 @@ class VarGroup:
         )
 
     def expand_data(self, data: DataFrame) -> DataFrame:
-        """Expand the variable into multiple columns based on the dimension.
+        """Expand the variable into multiple nameumns based on the dimension.
 
         Parameters
         ----------
         data : DataFrame
-            Data containing the variable column.
+            Data containing the variable nameumn.
 
         Returns
         -------
         DataFrame
-            Expanded variable columns.
+            Expanded variable nameumns.
 
         """
         if self.space is None:
             return DataFrame(index=data.index)
-        return self.space.encode(data, column=self.col)
+        return self.space.encode(data, column=self.name)

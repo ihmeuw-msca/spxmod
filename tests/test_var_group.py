@@ -30,7 +30,7 @@ def dimensions() -> dict[str, dict]:
 def test_categorical_lam(data, dimensions, lam, gprior_sd):
     space = Space(dims=[dimensions["loc"]])
     space.set_span(data)
-    var_group = VarGroup(col="intercept", space=space, lam=lam)
+    var_group = VarGroup(name="intercept", space=space, lam=lam)
     assert var_group.gprior.sd == gprior_sd
 
 
@@ -47,7 +47,7 @@ def test_numerical_lam(data, dimensions, lam, scale_by_distance, smooth_gprior_s
     space = Space(dims=[dimensions["age"]])
     space.set_span(data)
     var_group = VarGroup(
-        col="sdi", space=space, lam=lam, scale_by_distance=scale_by_distance
+        name="sdi", space=space, lam=lam, scale_by_distance=scale_by_distance
     )
     prior = var_group.get_smoothing_gprior()
     assert np.allclose(prior["sd"], smooth_gprior_sd)
@@ -56,7 +56,7 @@ def test_numerical_lam(data, dimensions, lam, scale_by_distance, smooth_gprior_s
 def test_expand_data(data, dimensions):
     space = Space(dims=[dimensions["age"]])
     space.set_span(data)
-    var_group = VarGroup(col="sdi", space=space, lam=1.0)
+    var_group = VarGroup(name="sdi", space=space, lam=1.0)
     expanded_data = var_group.expand_data(data)
     assert expanded_data.shape == (6, 3)
     assert np.allclose(expanded_data["sdi_age_0"], [1, 0, 0, 1, 0, 0])
