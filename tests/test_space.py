@@ -7,11 +7,13 @@ from regmodsm.space import Space
 
 @pytest.fixture
 def space() -> Space:
-    return Space(
-        dims=[
-            dict(name="location_id", dim_type="categorical"),
-            dict(name="age_mid", dim_type="numerical"),
-        ]
+    return Space.from_config(
+        dict(
+            dims=[
+                dict(name="location_id", dim_type="categorical"),
+                dict(name="age_mid", dim_type="numerical"),
+            ]
+        )
     )
 
 

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy as np
 from regmodsm.dimension import CategoricalDimension
 from regmodsm.space import Space
@@ -39,10 +41,6 @@ class VariableBuilder:
         between the neighboring values along the dimension. For
         numerical dimensions only. Default is False.
 
-    TODO
-    ----
-    * change all priors to use dictionary rather than regmod class
-
     """
 
     def __init__(
@@ -77,6 +75,13 @@ class VariableBuilder:
         )
         if lam_cat > 0:
             self.gprior["sd"] = 1.0 / np.sqrt(lam_cat)
+
+    @classmethod
+    def from_config(cls, config: dict, spaces: dict[str, Space]) -> VariableBuilder:
+        space_name = config.get("space")
+        if space_name:
+            config["space"] = spaces[space_name]
+        return cls(**config)
 
     @property
     def size(self) -> int:

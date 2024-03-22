@@ -28,7 +28,7 @@ def dimensions() -> dict[str, dict]:
 
 @pytest.mark.parametrize(("lam", "gprior_sd"), [(0.0, np.inf), (1.0, 1.0)])
 def test_categorical_lam(data, dimensions, lam, gprior_sd):
-    space = Space(dims=[dimensions["loc"]])
+    space = Space.from_config(dict(dims=[dimensions["loc"]]))
     space.set_span(data)
     var_builder = VariableBuilder(name="intercept", space=space, lam=lam)
     assert var_builder.gprior["sd"] == gprior_sd
@@ -44,7 +44,7 @@ def test_categorical_lam(data, dimensions, lam, gprior_sd):
     ],
 )
 def test_numerical_lam(data, dimensions, lam, scale_by_distance, smooth_gprior_sd):
-    space = Space(dims=[dimensions["age"]])
+    space = Space.from_config(dict(dims=[dimensions["age"]]))
     space.set_span(data)
     var_builder = VariableBuilder(
         name="sdi", space=space, lam=lam, scale_by_distance=scale_by_distance
@@ -54,7 +54,7 @@ def test_numerical_lam(data, dimensions, lam, scale_by_distance, smooth_gprior_s
 
 
 def test_encode(data, dimensions):
-    space = Space(dims=[dimensions["age"]])
+    space = Space.from_config(dict(dims=[dimensions["age"]]))
     space.set_span(data)
     var_builder = VariableBuilder(name="sdi", space=space, lam=1.0)
     expanded_data = var_builder.encode(data)

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import itertools
 import functools
 import numpy as np
 from scipy.sparse import csc_matrix, coo_matrix, identity, kron, vstack
-from regmodsm.dimension import build_dimension, NumericalDimension
+from regmodsm.dimension import build_dimension, Dimension, NumericalDimension
 from regmodsm._typing import DataFrame, NDArray
 
 
@@ -24,14 +26,20 @@ class Space:
     def __init__(
         self,
         name: str | None = None,
-        dims: list[dict] | None = None,
+        dims: list[Dimension] | None = None,
     ) -> None:
-        self.dims = [build_dimension(**dim) for dim in (dims or [])]
+        self.dims = dims or []
         self.name = "*".join(self.dim_names) if name is None else name
         self._span: DataFrame | None = None
 
         if not self.dims:
             self.set_span(DataFrame())
+
+    @classmethod
+    def from_config(cls, config: dict) -> Space:
+        if "dims" in config:
+            config["dims"] = [build_dimension(**dim) for dim in config["dims"]]
+        return cls(**config)
 
     @property
     def span(self) -> DataFrame:

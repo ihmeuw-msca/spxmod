@@ -49,6 +49,8 @@ pair.
 
 """
 
+from __future__ import annotations
+
 import numpy as np
 import pandas as pd
 from scipy.linalg import block_diag
@@ -85,36 +87,41 @@ class Model:
         self,
         model_type: str,
         obs: str,
-        spaces: list[dict],
-        var_builders: list[dict],
+        spaces: list[Space],
+        var_builders: list[VariableBuilder],
         weights: str = "weight",
         param_specs: dict | None = None,
     ) -> None:
-        self.regmod_model_config = dict(
+        self.core_config = dict(
             model_type=model_type,
             data=dict(col_obs=obs, col_weights=weights),
             variables=[],
             linear_gpriors=[],
             param_specs=param_specs or {},
         )
+        self.spaces = spaces
+        self.var_builders = var_builders
 
-        spaces = [Space(**kwargs) for kwargs in spaces]
-        self.spaces = {space.name: space for space in spaces}
+        self.core: RegmodModel | None = None
 
-        for var_builder in var_builders:
-            space_name = var_builder.get("space")
-            if space_name:
-                var_builder["space"] = self.spaces[space_name]
-        self.var_builders = [VariableBuilder(**kwargs) for kwargs in var_builders]
+    @classmethod
+    def from_config(cls, config: dict) -> Model:
+        spaces = list(map(Space.from_config, config["spaces"]))
+        var_builder_from_config = lambda config: VariableBuilder.from_config(
+            config, spaces={space.name: space for space in spaces}
+        )
+        var_builders = list(map(var_builder_from_config, config["var_builders"]))
 
-        self.regmod_model: RegmodModel | None = None
+        config["spaces"] = spaces
+        config["var_builders"] = var_builders
+        return cls(**config)
 
-    def _set_regmod_model_config(self, data: DataFrame) -> None:
-        for space in self.spaces.values():
+    def _set_core_config(self, data: DataFrame) -> None:
+        for space in self.spaces:
             space.set_span(data)
 
-        self.regmod_model_config["variables"] = self._build_variables()
-        self.regmod_model_config["linear_gpriors"] = self._build_linear_gpriors()
+        self.core_config["variables"] = self._build_variables()
+        self.core_config["linear_gpriors"] = self._build_linear_gpriors()
 
     def _build_variables(self) -> list[dict]:
         variables = []
@@ -130,8 +137,8 @@ class Model:
         mat, sd = block_diag(*mat), np.hstack(sd)
         return [dict(mat=mat, mean=0.0, sd=sd)]
 
-    def _build_regmod_model(self) -> RegmodModel:
-        return build_regmod_model(**self.regmod_model_config)
+    def _build_core(self) -> RegmodModel:
+        return build_regmod_model(**self.core_config)
 
     def _encode(self, data: DataFrame) -> DataFrame:
         data = data.copy()
@@ -161,12 +168,12 @@ class Model:
             Additional options for the optimizer.
 
         """
-        self._set_regmod_model_config(data_span or data)
-        self.regmod_model = self._build_regmod_model()
+        self._set_core_config(data_span or data)
+        self.core = self._build_core()
         data = self._encode(data)
-        self.regmod_model.attach_df(data)
-        self.regmod_model.fit(**optimizer_options)
-        _detach_df(self.regmod_model)
+        self.core.attach_df(data)
+        self.core.fit(**optimizer_options)
+        _detach_df(self.core)
 
     def predict(
         self,
@@ -193,15 +200,15 @@ class Model:
 
         """
         data = self._encode(data)
-        self.regmod_model.data.attach_df(data)
-        param = self.regmod_model.params[0]
-        coef = self.regmod_model.opt_coefs
+        self.core.data.attach_df(data)
+        param = self.core.params[0]
+        coef = self.core.opt_coefs
 
         offset = np.zeros(len(data))
         if param.offset is not None:
             offset = data[param.offset].to_numpy()
 
-        mat = np.ascontiguousarray(param.get_mat(self.regmod_model.data))
+        mat = np.ascontiguousarray(param.get_mat(self.core.data))
 
         lin_param = offset + mat.dot(coef)
         pred = param.inv_link.fun(lin_param)
@@ -209,7 +216,7 @@ class Model:
         if return_ui:
             if alpha < 0 or alpha > 0.5:
                 raise ValueError("`alpha` has to be between 0 and 0.5")
-            vcov = self.regmod_model.opt_vcov
+            vcov = self.core.opt_vcov
             lin_param_sd = np.sqrt(get_pred_var(mat, vcov))
             lin_param_lower = norm.ppf(0.5 * alpha, loc=lin_param, scale=lin_param_sd)
             lin_param_upper = norm.ppf(
@@ -222,7 +229,7 @@ class Model:
                     param.inv_link.fun(lin_param_upper),
                 ]
             )
-        self.regmod_model.data.detach_df()
+        self.core.data.detach_df()
         return pred
 
 
