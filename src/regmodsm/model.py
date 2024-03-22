@@ -10,15 +10,15 @@ the differences between neighboring coefficients. This ensures that
 coefficients vary smoothly by age. The uniform prior forces the
 coefficients to have positive values.
 
->>> import numpy as np
 >>> from regmodsm.model import Model
->>> model = Model(
+>>> config = dict(
         model_type="binomial",
         obs="obs_rate",
-        dims=[{"name": "age_mid", "type": "numerical"}],
-        var_builders=[{"col": "mean_BMI", "dim": "age_mid", "lam": 1.0, "uprior": (0.0, np.inf)}],
-        weights="sample_size"
+        spaces=[dict(dims=[{"name": "age_mid", "dim_type": "numerical"}])],
+        var_builders=[dict(name="mean_BMI", space="age_mid", lam=1.0, uprior=dict(lb=0.0))],
+        weights="sample_size",
     )
+>>> model = Model.from_config(config)
 
 Fit a RegMod model with intercept values smoothed by region. In this
 model, a different intercept is fit for each unique value of
@@ -26,27 +26,36 @@ model, a different intercept is fit for each unique value of
 1/sqrt(lam) is set on the mean of the intercept values.
 
 >>> from regmodsm.model import Model
->>> model = Model(
+>>> config = dict(
         model_type="binomial",
         obs="obs_rate",
-        dims=[{"name": "region_id", "type": "categorical"}],
-        var_builders=[{"col": "intercept", "dim": "region_id", "lam_mean": 1.0}],
-        weights="sample_size"
+        spaces=[dict(dims=[dict(name="region_id", dim_type="categorical")])],
+        var_builders=[dict(name="intercept", space="region_id", lam_mean=1.0)],
+        weights="sample_size",
     )
+>>> model = Model.from_config(config)
 
 Fit a RegMod model with intercept values smoothed by age-year. In this
 model, a different intercept is fit for each unique age_group_id-year_id
 pair.
 
 >>> from regmodsm.model import Model
->>> model = Model(
+>>> config = dict(
         model_type="binomial",
         obs="obs_rate",
-        dims=[{"name": ["age_group_id", "year_id"], "type": 2*["categorical"]}],
-        var_builders=[{"col": "intercept", "dim": "age_group_id*year_id"}],
-        "weights"="sample_size"
+        spaces=[
+            dict(
+                dims=[
+                    dict(name="age_group_id", dim_type="categorical"),
+                    dict(name="year_id", dim_type="categorical"),
+                ],
+            ),
+        ],
+        var_builders=[dict(name="intercept", space="age_group_id*year_id")],
+        weights="sample_size",
     )
-
+>>> model = Model.from_config(config)
+    
 """
 
 from __future__ import annotations
