@@ -31,7 +31,7 @@ def test_categorical_lam(data, dimensions, lam, gprior_sd):
     space = Space(dims=[dimensions["loc"]])
     space.set_span(data)
     var_builder = VariableBuilder(name="intercept", space=space, lam=lam)
-    assert var_builder.gprior.sd == gprior_sd
+    assert var_builder.gprior["sd"] == gprior_sd
 
 
 @pytest.mark.parametrize(

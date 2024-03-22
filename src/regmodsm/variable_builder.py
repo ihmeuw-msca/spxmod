@@ -1,6 +1,4 @@
 import numpy as np
-from regmod.prior import GaussianPrior, Prior, UniformPrior
-from regmod.variable import Variable
 from regmodsm.dimension import CategoricalDimension
 from regmodsm.space import Space
 from regmodsm._typing import DataFrame, NDArray
@@ -53,58 +51,42 @@ class VariableBuilder:
         space: Space = Space(),
         lam: float | dict[str, float] = 0.0,
         lam_mean: float = 0.0,
-        gprior: tuple[float, float] = (0.0, np.inf),
-        uprior: tuple[float, float] = (-np.inf, np.inf),
+        gprior: dict[str, float] | None = None,
+        uprior: dict[str, float] | None = None,
         scale_by_distance: bool = False,
     ) -> None:
         self.name = name
         self.space = space
         self.lam = lam
         self.lam_mean = lam_mean
-        self._gprior = gprior
-        self._uprior = uprior
+        self.gprior = gprior or dict(mean=0.0, sd=np.inf)
+        self.uprior = uprior or dict(lb=-np.inf, ub=np.inf)
         self.scale_by_distance = scale_by_distance
 
         # transfer lam to gprior when dim is categorical
-        if self.space is not None:
-            if isinstance(self.lam, float):
-                self.lam = {name: self.lam for name in self.space.dim_names}
+        if isinstance(self.lam, float):
+            self.lam = {name: self.lam for name in self.space.dim_names}
 
-            # TODO: this behavior is up-to-discussion
-            lam_cat = sum(
-                [
-                    self.lam.get(dim.name, 0.0)
-                    for dim in self.space.dims
-                    if isinstance(dim, CategoricalDimension)
-                ]
-            )
-            if lam_cat > 0:
-                self._gprior = (0.0, 1.0 / np.sqrt(lam_cat))
-
-    @property
-    def gprior(self) -> GaussianPrior:
-        """Gaussian prior for the variable group."""
-        return GaussianPrior(mean=self._gprior[0], sd=self._gprior[1])
-
-    @property
-    def uprior(self) -> UniformPrior:
-        """Uniform prior for the variable group."""
-        return UniformPrior(lb=self._uprior[0], ub=self._uprior[1])
-
-    @property
-    def priors(self) -> list[Prior]:
-        """List of Gaussian and Uniform priors for the variable group."""
-        return [self.gprior, self.uprior]
+        # TODO: this behavior is up-to-discussion
+        lam_cat = sum(
+            [
+                self.lam.get(dim.name, 0.0)
+                for dim in self.space.dims
+                if isinstance(dim, CategoricalDimension)
+            ]
+        )
+        if lam_cat > 0:
+            self.gprior["sd"] = 1.0 / np.sqrt(lam_cat)
 
     @property
     def size(self) -> int:
         """Number of variables in the variable group."""
         return self.space.size
 
-    def build_variables(self) -> list[Variable]:
+    def build_variables(self) -> list[dict]:
         """Returns the list of variables in the variable group."""
         variables = [
-            Variable(name, priors=self.priors)
+            dict(name=name, gprior=self.gprior, uprior=self.uprior)
             for name in self.space.build_encoded_names(self.name)
         ]
         return variables

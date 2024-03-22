@@ -51,24 +51,14 @@ pair.
 
 import numpy as np
 import pandas as pd
-from numpy.typing import NDArray
-from pandas import DataFrame
-from regmod.data import Data
-from regmod.models import BinomialModel, GaussianModel, PoissonModel
-from regmod.models import Model as RegmodModel
-from regmod.prior import LinearGaussianPrior
 from scipy.linalg import block_diag
 from scipy.stats import norm
 
 from regmodsm.linalg import get_pred_var
 from regmodsm.space import Space
 from regmodsm.variable_builder import VariableBuilder
-
-_model_dict = {
-    "binomial": BinomialModel,
-    "gaussian": GaussianModel,
-    "poisson": PoissonModel,
-}
+from regmodsm.regmod_builder import build_regmod_model
+from regmodsm._typing import DataFrame, NDArray, RegmodModel
 
 
 class Model:
@@ -100,85 +90,62 @@ class Model:
         weights: str = "weight",
         param_specs: dict | None = None,
     ) -> None:
-        self.model_type = model_type
-        self.obs = obs
+        self.regmod_model_config = dict(
+            model_type=model_type,
+            data=dict(col_obs=obs, col_weights=weights),
+            variables=[],
+            linear_gpriors=[],
+            param_specs=param_specs or {},
+        )
 
-        self.spaces = tuple([Space(**kwargs) for kwargs in spaces])
-        self._space_dict = {space.name: space for space in self.spaces}
+        spaces = [Space(**kwargs) for kwargs in spaces]
+        self.spaces = {space.name: space for space in spaces}
 
         for var_builder in var_builders:
-            if ("space" in var_builder) and (var_builder["space"] is not None):
-                var_builder["space"] = self._space_dict[var_builder["space"]]
-        self.var_builders = tuple(
-            [VariableBuilder(**kwargs) for kwargs in var_builders]
-        )
+            space_name = var_builder.get("space")
+            if space_name:
+                var_builder["space"] = self.spaces[space_name]
+        self.var_builders = [VariableBuilder(**kwargs) for kwargs in var_builders]
 
-        self.weights = weights
-        self.param_specs = param_specs or {}
+        self.regmod_model: RegmodModel | None = None
 
-        self._model: RegmodModel | None = None
-
-    def _set_space_span(self, data: DataFrame) -> None:
-        for space in self.spaces:
+    def _set_regmod_model_config(self, data: DataFrame) -> None:
+        for space in self.spaces.values():
             space.set_span(data)
 
-    def _get_smoothing_prior(self) -> tuple[NDArray, NDArray]:
-        prior_mats = []
-        prior_sds = []
-        for var_builder in self.var_builders:
-            prior = var_builder.build_smoothing_prior()
-            prior_mats.append(prior["mat"])
-            prior_sds.append(prior["sd"])
-        prior_mat = block_diag(*prior_mats)
-        prior_sds = np.hstack(prior_sds)
-        return prior_mat, prior_sds
+        self.regmod_model_config["variables"] = self._build_variables()
+        self.regmod_model_config["linear_gpriors"] = self._build_linear_gpriors()
 
-    def _get_model(self) -> RegmodModel:
-        data = Data(
-            col_obs=self.obs,
-            col_weights=self.weights,
-        )
-
+    def _build_variables(self) -> list[dict]:
         variables = []
         for var_builder in self.var_builders:
             variables.extend(var_builder.build_variables())
+        return variables
 
-        linear_gpriors = []
-        prior_mat, prior_sds = self._get_smoothing_prior()
-        if len(prior_mat) > 0:
-            linear_gpriors = [
-                LinearGaussianPrior(mat=prior_mat, mean=0.0, sd=prior_sds)
-            ]
+    def _build_linear_gpriors(self) -> list[dict]:
+        mat, sd = [], []
+        for var_builder in self.var_builders:
+            prior = var_builder.build_smoothing_prior()
+            mat.append(prior["mat"]), sd.append(prior["sd"])
+        mat, sd = block_diag(*mat), np.hstack(sd)
+        return [dict(mat=mat, mean=0.0, sd=sd)]
 
-        model_class = _model_dict[self.model_type]
-        model_param = model_class.param_names[0]
+    def _build_regmod_model(self) -> RegmodModel:
+        return build_regmod_model(**self.regmod_model_config)
 
-        model = model_class(
-            data,
-            param_specs={
-                model_param: {
-                    "variables": variables,
-                    "linear_gpriors": linear_gpriors,
-                    **self.param_specs,
-                }
-            },
-        )
-        return model
-
-    def _expand_data(self, data: DataFrame) -> DataFrame:
+    def _encode(self, data: DataFrame) -> DataFrame:
         data = data.copy()
         data["intercept"] = 1.0
 
         for var_builder in self.var_builders:
-            df_covs = var_builder.encode(data)
-            data = pd.concat([data, df_covs], axis=1)
+            data = pd.concat([data, var_builder.encode(data)], axis=1)
 
         return data
 
     def fit(
         self,
         data: DataFrame,
-        data_space_span: DataFrame | None = None,
+        data_span: DataFrame | None = None,
         **optimizer_options,
     ) -> None:
         """Fit the model to the data.
@@ -187,22 +154,19 @@ class Model:
         ----------
         data : DataFrame
             Data to fit the model to.
-        data_space_span : DataFrame, optional
+        data_span : DataFrame, optional
             Data containing the unique dimension values. If None, values
             are extracted from the data. Default is None.
         optimizer_options
             Additional options for the optimizer.
 
         """
-        if data_space_span is None:
-            self._set_space_span(data)
-        else:
-            self._set_space_span(data_space_span)
-        self._model = self._get_model()
-        data = self._expand_data(data)
-        self._model.attach_df(data)
-        self._model.fit(**optimizer_options)
-        _detach_df(self._model)
+        self._set_regmod_model_config(data_span or data)
+        self.regmod_model = self._build_regmod_model()
+        data = self._encode(data)
+        self.regmod_model.attach_df(data)
+        self.regmod_model.fit(**optimizer_options)
+        _detach_df(self.regmod_model)
 
     def predict(
         self,
@@ -228,16 +192,16 @@ class Model:
             is also returned.
 
         """
-        data = self._expand_data(data)
-        self._model.data.attach_df(data)
-        param = self._model.params[0]
-        coef = self._model.opt_coefs
+        data = self._encode(data)
+        self.regmod_model.data.attach_df(data)
+        param = self.regmod_model.params[0]
+        coef = self.regmod_model.opt_coefs
 
         offset = np.zeros(len(data))
         if param.offset is not None:
             offset = data[param.offset].to_numpy()
 
-        mat = np.ascontiguousarray(param.get_mat(self._model.data))
+        mat = np.ascontiguousarray(param.get_mat(self.regmod_model.data))
 
         lin_param = offset + mat.dot(coef)
         pred = param.inv_link.fun(lin_param)
@@ -245,7 +209,7 @@ class Model:
         if return_ui:
             if alpha < 0 or alpha > 0.5:
                 raise ValueError("`alpha` has to be between 0 and 0.5")
-            vcov = self._model.opt_vcov
+            vcov = self.regmod_model.opt_vcov
             lin_param_sd = np.sqrt(get_pred_var(mat, vcov))
             lin_param_lower = norm.ppf(0.5 * alpha, loc=lin_param, scale=lin_param_sd)
             lin_param_upper = norm.ppf(
@@ -258,7 +222,7 @@ class Model:
                     param.inv_link.fun(lin_param_upper),
                 ]
             )
-        self._model.data.detach_df()
+        self.regmod_model.data.detach_df()
         return pred
 
 
