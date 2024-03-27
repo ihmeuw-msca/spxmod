@@ -34,7 +34,21 @@ model, a different intercept is fit for each unique value of
         weights="sample_size"
     )
 
+Fit a RegMod model with intercept values smoothed by age-year. In this
+model, a different intercept is fit for each unique age_group_id-year_id
+pair.
+
+>>> from regmodsm.model import Model
+>>> model = Model(
+        model_type="binomial",
+        obs="obs_rate",
+        dims=[{"name": ["age_group_id", "year_id"], "type": 2*["categorical"]}],
+        var_groups=[{"col": "intercept", "dim": "age_group_id*year_id"}],
+        "weights"="sample_size"
+    )
+
 """
+
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
@@ -46,46 +60,15 @@ from regmod.prior import LinearGaussianPrior, GaussianPrior, Prior, UniformPrior
 from regmod.variable import Variable
 from scipy.linalg import block_diag
 from scipy.stats import norm
-from sklearn.preprocessing import OneHotEncoder
 
 from regmodsm.linalg import get_pred_var
+from regmodsm.dimension import Dimension
 
 _model_dict = {
     "binomial": BinomialModel,
     "gaussian": GaussianModel,
     "poisson": PoissonModel,
 }
-
-
-class Dimension:
-    """Dimension used for grouped variable smoothing.
-
-    Parameters
-    ----------
-    name : str
-        Name of the dimension column in the data.
-    type : {"numerical", "categorical"}
-        Dimension type.
-
-    """
-
-    def __init__(self, name: str, type: str) -> None:
-        self.name = name
-        self.type = type
-        self.vals = None
-        self.encoder = OneHotEncoder()
-
-    def set_vals(self, data: DataFrame) -> None:
-        """Set the unique dimension values.
-
-        Parameters
-        ----------
-        data : DataFrame
-            Data to set the unique dimension values from.
-
-        """
-        self.encoder.fit(data[[self.name]])
-        self.vals = self.encoder.categories_[0].tolist()
 
 
 class VarGroup:
@@ -167,17 +150,15 @@ class VarGroup:
         """Number of variables in the variable group."""
         if self.dim is None:
             return 1
-        if self.dim.vals is None:
-            raise ValueError(f"Please set values in dim={self.dim.name} first")
-        return len(self.dim.vals)
+        return self.dim.size
 
     def get_variables(self) -> list[Variable]:
         """Returns the list of variables in the variable group."""
         if self.dim is None:
             return [Variable(self.col, priors=self.priors)]
         variables = [
-            Variable(f"{self.col}_{self.dim.name}_{i}", priors=self.priors)
-            for i in range(len(self.dim.vals))
+            Variable(name, priors=self.priors)
+            for name in self.dim.get_dummy_names(self.col)
         ]
         return variables
 
@@ -238,16 +219,7 @@ class VarGroup:
         """
         if self.dim is None:
             return DataFrame(index=data.index)
-
-        dummies = pd.DataFrame.sparse.from_spmatrix(
-            self.dim.encoder.transform(data[[self.dim.name]]),
-            columns=[
-                f"{self.col}_{self.dim.name}_{i}" for i in range(len(self.dim.vals))
-            ],
-            index=data.index,
-        )
-        df_vars = dummies.mul(data[self.col], axis=0)
-        return df_vars
+        return self.dim.get_dummies(data, column=self.col)
 
 
 class Model:
@@ -283,7 +255,7 @@ class Model:
         self.obs = obs
 
         self.dims = tuple(map(lambda kwargs: Dimension(**kwargs), dims))
-        self._dim_dict = {dim.name: dim for dim in self.dims}
+        self._dim_dict = {dim.label: dim for dim in self.dims}
 
         for var_group in var_groups:
             if ("dim" in var_group) and (var_group["dim"] is not None):

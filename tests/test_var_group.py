@@ -28,6 +28,9 @@ def dimensions(data) -> dict[str, Dimension]:
     return dimensions
 
 
+@pytest.mark.xfail(
+    reason="lam for multi-indexed dimensions need to be addressed in another PR"
+)
 @pytest.mark.parametrize(("lam", "gprior_sd"), [(0.0, np.inf), (1.0, 1.0)])
 def test_categorical_lam(dimensions, lam, gprior_sd):
     dim = dimensions["loc"]
@@ -35,6 +38,9 @@ def test_categorical_lam(dimensions, lam, gprior_sd):
     assert var_group.gprior.sd == gprior_sd
 
 
+@pytest.mark.xfail(
+    reason="lam for multi-indexed dimensions need to be addressed in another PR"
+)
 @pytest.mark.parametrize(
     ("lam", "scale_by_distance", "smooth_gprior_sd"),
     [

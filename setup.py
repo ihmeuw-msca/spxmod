@@ -14,7 +14,7 @@ if __name__ == "__main__":
     with (base_dir / "README.rst").open() as f:
         long_description = f.read()
 
-    install_requirements = ["regmod==0.1.1", "Cython", "scikit-learn"]
+    install_requirements = ["regmod==0.1.1", "Cython"]
 
     test_requirements = [
         "pytest",
@@ -25,7 +25,7 @@ if __name__ == "__main__":
 
     setup(
         name="regmodsm",
-        version="0.1.1",
+        version="0.2.1",
         description="Regression model smoother",
         long_description=long_description,
         license="LICENSE",
