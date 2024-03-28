@@ -70,7 +70,6 @@ _model_dict = {
     "poisson": PoissonModel,
 }
 
-
 class Model:
     """RegMod Smooth model.
 
