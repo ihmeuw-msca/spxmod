@@ -21,9 +21,9 @@ def data() -> pd.DataFrame:
     )
 
 
-def test_set_vals(dim, data):
-    dim.set_vals(data=data)
-    assert dim.vals.equals(
+def test_set_span(dim, data):
+    dim.set_span(data=data)
+    assert dim.span.equals(
         pd.DataFrame(
             dict(
                 index=[0, 1, 2, 3, 4, 5],
@@ -35,7 +35,7 @@ def test_set_vals(dim, data):
 
 
 def test_get_dummy_names(dim, data):
-    dim.set_vals(data=data)
+    dim.set_span(data=data)
     assert dim.label == "location_id*age_mid"
     dummy_names = dim.get_dummy_names(column="sdi")
     assert dummy_names == [
@@ -49,7 +49,7 @@ def test_get_dummy_names(dim, data):
 
 
 def test_get_dummies(dim, data):
-    dim.set_vals(data=data)
+    dim.set_span(data=data)
     dummies = dim.get_dummies(data=data, column="sdi")
     dummies = dummies.astype(float)
     assert dummies.equals(
@@ -64,3 +64,22 @@ def test_get_dummies(dim, data):
             }
         )
     )
+
+
+def test_get_smoothing_gprior(dim, data):
+    dim.set_span(data=data)
+    mat, vec = dim.get_smoothing_gprior(lam=1.0, lam_mean=0.0)
+
+    assert np.allclose(
+        mat,
+        np.array(
+            [
+                [1.0, -1.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, -1.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0, -1.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 1.0, -1.0],
+            ]
+        ),
+    )
+
+    assert np.allclose(vec, np.array([[0.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]]))

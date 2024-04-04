@@ -24,7 +24,7 @@ def dimensions(data) -> dict[str, Dimension]:
         "loc": Dimension(name="loc", type="categorical"),
     }
     for dim in dimensions.values():
-        dim.set_vals(data=data)
+        dim.set_span(data=data)
     return dimensions
 
 
