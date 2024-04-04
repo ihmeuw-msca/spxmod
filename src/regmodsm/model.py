@@ -55,21 +55,23 @@ pair.
         weights="sample_size",
     )
 >>> model = Model.from_config(config)
-    
+
 """
 
 from __future__ import annotations
 
+import functools
+
 import numpy as np
-import pandas as pd
-from scipy.linalg import block_diag
+from msca.linalg.matrix import asmatrix
+from scipy.sparse import block_diag, coo_matrix, csc_matrix, hstack
 from scipy.stats import norm
 
+from regmodsm._typing import DataFrame, NDArray, RegmodModel
 from regmodsm.linalg import get_pred_var
+from regmodsm.regmod_builder import build_regmod_model
 from regmodsm.space import Space
 from regmodsm.variable_builder import VariableBuilder
-from regmodsm.regmod_builder import build_regmod_model
-from regmodsm._typing import DataFrame, NDArray, RegmodModel
 
 class Model:
     """RegMod Smooth model.
@@ -115,8 +117,8 @@ class Model:
     @classmethod
     def from_config(cls, config: dict) -> Model:
         spaces = list(map(Space.from_config, config["spaces"]))
-        var_builder_from_config = lambda config: VariableBuilder.from_config(
-            config, spaces={space.name: space for space in spaces}
+        var_builder_from_config = functools.partial(
+            VariableBuilder.from_config, spaces={space.name: space for space in spaces}
         )
         var_builders = list(map(var_builder_from_config, config["var_builders"]))
 
@@ -142,20 +144,15 @@ class Model:
         for var_builder in self.var_builders:
             prior = var_builder.build_smoothing_prior()
             mat.append(prior["mat"]), sd.append(prior["sd"])
-        mat, sd = block_diag(*mat), np.hstack(sd)
+        mat, sd = block_diag(mat), np.hstack(sd)
         return [dict(mat=mat, mean=0.0, sd=sd)]
 
     def _build_core(self) -> RegmodModel:
         return build_regmod_model(**self.core_config)
 
-    def _encode(self, data: DataFrame) -> DataFrame:
-        data = data.copy()
-        data["intercept"] = 1.0
-
-        for var_builder in self.var_builders:
-            data = pd.concat([data, var_builder.encode(data)], axis=1)
-
-        return data
+    def _encode(self, data: DataFrame) -> coo_matrix:
+        mats = [var_builder.encode(data) for var_builder in self.var_builders]
+        return hstack(mats)
 
     def fit(
         self,
@@ -176,12 +173,12 @@ class Model:
             Additional options for the optimizer.
 
         """
-        self._set_core_config(data_span or data)
+        self._set_core_config(data if data_span is None else data_span)
         self.core = self._build_core()
-        data = self._encode(data)
-        self.core.attach_df(data)
+        mat = self._encode(data)
+        _attach_data(self.core, mat, data)
         self.core.fit(**optimizer_options)
-        _detach_df(self.core)
+        _detach_data(self.core)
 
     def predict(
         self,
@@ -207,8 +204,7 @@ class Model:
             is also returned.
 
         """
-        data = self._encode(data)
-        self.core.data.attach_df(data)
+        mat = csc_matrix(self._encode(data))
         param = self.core.params[0]
         coef = self.core.opt_coefs
 
@@ -216,14 +212,13 @@ class Model:
         if param.offset is not None:
             offset = data[param.offset].to_numpy()
 
-        mat = np.ascontiguousarray(param.get_mat(self.core.data))
-
         lin_param = offset + mat.dot(coef)
         pred = param.inv_link.fun(lin_param)
 
         if return_ui:
             if alpha < 0 or alpha > 0.5:
                 raise ValueError("`alpha` has to be between 0 and 0.5")
+            # TODO: explore the sparsity of the variance-covariance matrix
             vcov = self.core.opt_vcov
             lin_param_sd = np.sqrt(get_pred_var(mat, vcov))
             lin_param_lower = norm.ppf(0.5 * alpha, loc=lin_param, scale=lin_param_sd)
@@ -237,11 +232,30 @@ class Model:
                     param.inv_link.fun(lin_param_upper),
                 ]
             )
-        self.core.data.detach_df()
         return pred
 
 
-def _detach_df(model: RegmodModel) -> RegmodModel:
+def _attach_data(model: RegmodModel, mat: coo_matrix, data: DataFrame) -> RegmodModel:
+    model.data.attach_df(data)
+    model.mat = [asmatrix(csc_matrix(mat))]
+    model.uvec = model.get_uvec()
+    model.gvec = model.get_gvec()
+    model.linear_uvec = model.get_linear_uvec()
+    model.linear_gvec = model.get_linear_gvec()
+    model.linear_umat = asmatrix(csc_matrix((0, model.size)))
+    model.linear_gmat = asmatrix(csc_matrix((0, model.size)))
+    param = model.params[0]
+    if model.params[0].linear_gpriors:
+        model.linear_gmat = asmatrix(csc_matrix(param.linear_gpriors[0].mat))
+
+    # constraints
+    model.cmat = asmatrix(csc_matrix((0, model.size)))
+    model.cvec = np.empty((2, 0))
+
+    return model
+
+
+def _detach_data(model: RegmodModel) -> RegmodModel:
     """Detach input data and model arrays from the RegMod model."""
     model.data.detach_df()
     del model.mat

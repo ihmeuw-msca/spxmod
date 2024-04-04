@@ -1,12 +1,57 @@
+import numpy as np
+import scipy.sparse as sp
+from msca.linalg.matrix import asmatrix, Matrix
+from msca.optim.solver import NTSolver, IPSolver
 from regmod.data import Data
 from regmod.variable import Variable
 from regmod.prior import LinearGaussianPrior, GaussianPrior, UniformPrior
 from regmod.models import BinomialModel, GaussianModel, PoissonModel
-from regmodsm._typing import RegmodModel
+from regmodsm._typing import RegmodModel, NDArray, Callable
+
+
+def msca_optimize(
+    model: RegmodModel, x0: NDArray | None = None, options: dict | None = None
+) -> NDArray:
+    x0 = np.zeros(model.size) if x0 is None else x0
+    options = options or {}
+
+    if model.cmat.size == 0:
+        solver = NTSolver(model.objective, model.gradient, model.hessian)
+    else:
+        solver = IPSolver(
+            model.objective, model.gradient, model.hessian, model.cmat, model.cvec
+        )
+    result = solver.minimize(x0=x0, **options)
+    model.opt_result = result
+    model.opt_coefs = result.x.copy()
+    model.opt_hessian = model.hessian(model.opt_coefs)
+    model.opt_jacobian2 = model.jacobian2(model.opt_coefs)
+    return result.x
+
+
+class SparseBinomialModel(BinomialModel):
+
+    def hessian_from_gprior(self) -> Matrix:
+        """Hessian matrix from the Gaussian prior.
+
+        Returns
+        -------
+        Matrix
+            Hessian matrix.
+        """
+        hess = sp.diags(1.0 / self.gvec[1] ** 2)
+        if self.linear_gvec.size > 0:
+            hess += (self.linear_gmat.T.scale_cols(1.0 / self.linear_gvec[1] ** 2)).dot(
+                self.linear_gmat
+            )
+        return asmatrix(hess)
+
+    def fit(self, optimizer: Callable = msca_optimize, **optimizer_options) -> None:
+        super().fit(optimizer=optimizer, **optimizer_options)
 
 
 _model_dict = {
-    "binomial": BinomialModel,
+    "binomial": SparseBinomialModel,
     "gaussian": GaussianModel,
     "poisson": PoissonModel,
 }
