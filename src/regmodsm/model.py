@@ -10,15 +10,15 @@ the differences between neighboring coefficients. This ensures that
 coefficients vary smoothly by age. The uniform prior forces the
 coefficients to have positive values.
 
->>> import numpy as np
 >>> from regmodsm.model import Model
->>> model = Model(
+>>> config = dict(
         model_type="binomial",
         obs="obs_rate",
-        dims=[{"name": "age_mid", "type": "numerical"}],
-        var_groups=[{"col": "mean_BMI", "dim": "age_mid", "lam": 1.0, "uprior": (0.0, np.inf)}],
-        weights="sample_size"
+        spaces=[dict(dims=[{"name": "age_mid", "dim_type": "numerical"}])],
+        var_builders=[dict(name="mean_BMI", space="age_mid", lam=1.0, uprior=dict(lb=0.0))],
+        weights="sample_size",
     )
+>>> model = Model.from_config(config)
 
 Fit a RegMod model with intercept values smoothed by region. In this
 model, a different intercept is fit for each unique value of
@@ -26,49 +26,50 @@ model, a different intercept is fit for each unique value of
 1/sqrt(lam) is set on the mean of the intercept values.
 
 >>> from regmodsm.model import Model
->>> model = Model(
+>>> config = dict(
         model_type="binomial",
         obs="obs_rate",
-        dims=[{"name": "region_id", "type": "categorical"}],
-        var_groups=[{"col": "intercept", "dim": "region_id", "lam_mean": 1.0}],
-        weights="sample_size"
+        spaces=[dict(dims=[dict(name="region_id", dim_type="categorical")])],
+        var_builders=[dict(name="intercept", space="region_id", lam_mean=1.0)],
+        weights="sample_size",
     )
+>>> model = Model.from_config(config)
 
 Fit a RegMod model with intercept values smoothed by age-year. In this
 model, a different intercept is fit for each unique age_group_id-year_id
 pair.
 
 >>> from regmodsm.model import Model
->>> model = Model(
+>>> config = dict(
         model_type="binomial",
         obs="obs_rate",
-        dims=[{"name": ["age_group_id", "year_id"], "type": 2*["categorical"]}],
-        var_groups=[{"col": "intercept", "dim": "age_group_id*year_id"}],
-        "weights"="sample_size"
+        spaces=[
+            dict(
+                dims=[
+                    dict(name="age_group_id", dim_type="categorical"),
+                    dict(name="year_id", dim_type="categorical"),
+                ],
+            ),
+        ],
+        var_builders=[dict(name="intercept", space="age_group_id*year_id")],
+        weights="sample_size",
     )
-
+>>> model = Model.from_config(config)
+    
 """
+
+from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from numpy.typing import NDArray
-from pandas import DataFrame
-from regmod.data import Data
-from regmod.models import BinomialModel, GaussianModel, PoissonModel
-from regmod.models import Model as RegmodModel
-from regmod.prior import LinearGaussianPrior
 from scipy.linalg import block_diag
 from scipy.stats import norm
 
 from regmodsm.linalg import get_pred_var
-from regmodsm.dimension import Dimension
-from regmodsm.vargroup import VarGroup
-
-_model_dict = {
-    "binomial": BinomialModel,
-    "gaussian": GaussianModel,
-    "poisson": PoissonModel,
-}
+from regmodsm.space import Space
+from regmodsm.variable_builder import VariableBuilder
+from regmodsm.regmod_builder import build_regmod_model
+from regmodsm._typing import DataFrame, NDArray, RegmodModel
 
 class Model:
     """RegMod Smooth model.
@@ -79,9 +80,9 @@ class Model:
         RegMod model type.
     obs : str
         Name of the observation column in the data.
-    dims : list[dict]
-        List of dictionaries containing dimension names and arguments.
-    var_groups : list[dict]
+    spaces : list[dict]
+        List of dictionaries containing space names and arguments.
+    var_builders : list[dict]
         List of dictionaries containing variable group names and arguments.
     weights : str, optional
         Name of the weight column in the data. Default is "weight".
@@ -94,88 +95,72 @@ class Model:
         self,
         model_type: str,
         obs: str,
-        dims: list[dict],
-        var_groups: list[dict],
+        spaces: list[Space],
+        var_builders: list[VariableBuilder],
         weights: str = "weight",
         param_specs: dict | None = None,
     ) -> None:
-        self.model_type = model_type
-        self.obs = obs
-
-        self.dims = tuple(map(lambda kwargs: Dimension(**kwargs), dims))
-        self._dim_dict = {dim.label: dim for dim in self.dims}
-
-        for var_group in var_groups:
-            if ("dim" in var_group) and (var_group["dim"] is not None):
-                var_group["dim"] = self._dim_dict[var_group["dim"]]
-        self.var_groups = tuple(map(lambda kwargs: VarGroup(**kwargs), var_groups))
-
-        self.weights = weights
-        self.param_specs = param_specs or {}
-
-        self._model: RegmodModel | None = None
-
-    def _set_dim_span(self, data: DataFrame) -> None:
-        for dim in self.dims:
-            dim.set_span(data)
-
-    def _get_smoothing_prior(self) -> tuple[NDArray, NDArray]:
-        prior_mats = []
-        prior_vecs = []
-        for var_group in self.var_groups:
-            mat, vec = var_group.get_smoothing_gprior()
-            prior_mats.append(mat)
-            prior_vecs.append(vec)
-        prior_mat = block_diag(*prior_mats)
-        prior_vec = np.hstack(prior_vecs)
-        return prior_mat, prior_vec
-
-    def _get_model(self) -> RegmodModel:
-        data = Data(
-            col_obs=self.obs,
-            col_weights=self.weights,
+        self.core_config = dict(
+            model_type=model_type,
+            data=dict(col_obs=obs, col_weights=weights),
+            variables=[],
+            linear_gpriors=[],
+            param_specs=param_specs or {},
         )
+        self.spaces = spaces
+        self.var_builders = var_builders
 
+        self.core: RegmodModel | None = None
+
+    @classmethod
+    def from_config(cls, config: dict) -> Model:
+        spaces = list(map(Space.from_config, config["spaces"]))
+        var_builder_from_config = lambda config: VariableBuilder.from_config(
+            config, spaces={space.name: space for space in spaces}
+        )
+        var_builders = list(map(var_builder_from_config, config["var_builders"]))
+
+        config["spaces"] = spaces
+        config["var_builders"] = var_builders
+        return cls(**config)
+
+    def _set_core_config(self, data: DataFrame) -> None:
+        for space in self.spaces:
+            space.set_span(data)
+
+        self.core_config["variables"] = self._build_variables()
+        self.core_config["linear_gpriors"] = self._build_linear_gpriors()
+
+    def _build_variables(self) -> list[dict]:
         variables = []
-        for var_group in self.var_groups:
-            variables.extend(var_group.get_variables())
+        for var_builder in self.var_builders:
+            variables.extend(var_builder.build_variables())
+        return variables
 
-        linear_gpriors = []
-        prior_mat, prior_vec = self._get_smoothing_prior()
-        if len(prior_mat) > 0:
-            linear_gpriors = [
-                LinearGaussianPrior(mat=prior_mat, mean=prior_vec[0], sd=prior_vec[1])
-            ]
+    def _build_linear_gpriors(self) -> list[dict]:
+        mat, sd = [], []
+        for var_builder in self.var_builders:
+            prior = var_builder.build_smoothing_prior()
+            mat.append(prior["mat"]), sd.append(prior["sd"])
+        mat, sd = block_diag(*mat), np.hstack(sd)
+        return [dict(mat=mat, mean=0.0, sd=sd)]
 
-        model_class = _model_dict[self.model_type]
-        model_param = model_class.param_names[0]
+    def _build_core(self) -> RegmodModel:
+        return build_regmod_model(**self.core_config)
 
-        model = model_class(
-            data,
-            param_specs={
-                model_param: {
-                    "variables": variables,
-                    "linear_gpriors": linear_gpriors,
-                    **self.param_specs,
-                }
-            },
-        )
-        return model
-
-    def _expand_data(self, data: DataFrame) -> DataFrame:
+    def _encode(self, data: DataFrame) -> DataFrame:
         data = data.copy()
         data["intercept"] = 1.0
 
-        for var_group in self.var_groups:
-            df_covs = var_group.expand_data(data)
-            data = pd.concat([data, df_covs], axis=1)
+        for var_builder in self.var_builders:
+            data = pd.concat([data, var_builder.encode(data)], axis=1)
 
         return data
 
     def fit(
         self,
         data: DataFrame,
-        data_dim_vals: DataFrame | None = None,
+        data_span: DataFrame | None = None,
         **optimizer_options,
     ) -> None:
         """Fit the model to the data.
@@ -184,22 +169,19 @@ class Model:
         ----------
         data : DataFrame
             Data to fit the model to.
-        data_dim_vals : DataFrame, optional
+        data_span : DataFrame, optional
             Data containing the unique dimension values. If None, values
             are extracted from the data. Default is None.
         optimizer_options
             Additional options for the optimizer.
 
         """
-        if data_dim_vals is None:
-            self._set_dim_span(data)
-        else:
-            self._set_dim_span(data_dim_vals)
-        self._model = self._get_model()
-        data = self._expand_data(data)
-        self._model.attach_df(data)
-        self._model.fit(**optimizer_options)
-        _detach_df(self._model)
+        self._set_core_config(data_span or data)
+        self.core = self._build_core()
+        data = self._encode(data)
+        self.core.attach_df(data)
+        self.core.fit(**optimizer_options)
+        _detach_df(self.core)
 
     def predict(
         self,
@@ -225,16 +207,16 @@ class Model:
             is also returned.
 
         """
-        data = self._expand_data(data)
-        self._model.data.attach_df(data)
-        param = self._model.params[0]
-        coef = self._model.opt_coefs
+        data = self._encode(data)
+        self.core.data.attach_df(data)
+        param = self.core.params[0]
+        coef = self.core.opt_coefs
 
         offset = np.zeros(len(data))
         if param.offset is not None:
             offset = data[param.offset].to_numpy()
 
-        mat = np.ascontiguousarray(param.get_mat(self._model.data))
+        mat = np.ascontiguousarray(param.get_mat(self.core.data))
 
         lin_param = offset + mat.dot(coef)
         pred = param.inv_link.fun(lin_param)
@@ -242,7 +224,7 @@ class Model:
         if return_ui:
             if alpha < 0 or alpha > 0.5:
                 raise ValueError("`alpha` has to be between 0 and 0.5")
-            vcov = self._model.opt_vcov
+            vcov = self.core.opt_vcov
             lin_param_sd = np.sqrt(get_pred_var(mat, vcov))
             lin_param_lower = norm.ppf(0.5 * alpha, loc=lin_param, scale=lin_param_sd)
             lin_param_upper = norm.ppf(
@@ -255,7 +237,7 @@ class Model:
                     param.inv_link.fun(lin_param_upper),
                 ]
             )
-        self._model.data.detach_df()
+        self.core.data.detach_df()
         return pred
 
 

@@ -1,20 +1,21 @@
+from __future__ import annotations
+
 import numpy as np
-from numpy.typing import NDArray
-from pandas import DataFrame
-from regmodsm.dimension import Dimension
-from regmod.prior import GaussianPrior, Prior, UniformPrior
-from regmod.variable import Variable
+from regmodsm.dimension import CategoricalDimension
+from regmodsm.space import Space
+from regmodsm._typing import DataFrame, NDArray
 
 
-class VarGroup:
-    """Variable group created by partitioning a variable along a dimension.
+class VariableBuilder:
+    """Variable builder to build encoded variables based on the provided space
+    and prior information.
 
     Parameters
     ----------
-    col : str
+    name : str
         Name of the variable column in the data.
-    dim : Dimension, optional
-        Dimension to partition the variable on. If None, the variable is
+    space : Space, optional
+        Space to partition the variable on. If None, the variable is
         not partitioned.
     lam : float, optional
         Regularization parameter for the coefficients in the variable
@@ -44,71 +45,58 @@ class VarGroup:
 
     def __init__(
         self,
-        col: str,
-        dim: Dimension | None = None,
+        name: str,
+        space: Space = Space(),
         lam: float | dict[str, float] = 0.0,
-        lam_mean: float = 1e-8,
-        gprior: tuple[float, float] = (0.0, np.inf),
-        uprior: tuple[float, float] = (-np.inf, np.inf),
+        lam_mean: float = 0.0,
+        gprior: dict[str, float] | None = None,
+        uprior: dict[str, float] | None = None,
         scale_by_distance: bool = False,
     ) -> None:
-        self.col = col
-        self.dim = dim
+        self.name = name
+        self.space = space
         self.lam = lam
         self.lam_mean = lam_mean
-        self._gprior = gprior
-        self._uprior = uprior
+        self.gprior = gprior or dict(mean=0.0, sd=np.inf)
+        self.uprior = uprior or dict(lb=-np.inf, ub=np.inf)
         self.scale_by_distance = scale_by_distance
 
         # transfer lam to gprior when dim is categorical
-        if self.dim is not None:
-            if isinstance(self.lam, float):
-                self.lam = {name: self.lam for name in self.dim.name}
+        if isinstance(self.lam, float):
+            self.lam = {name: self.lam for name in self.space.dim_names}
 
-            # TODO: this behavior is up-to-discussion
-            lam_cat = sum(
-                [
-                    self.lam.get(name, 0.0)
-                    for name, type in zip(self.dim.name, self.dim.type)
-                    if type == "categorical"
-                ]
-            )
-            if lam_cat > 0:
-                self._gprior = (0.0, 1.0 / np.sqrt(lam_cat))
+        # TODO: this behavior is up-to-discussion
+        lam_cat = sum(
+            [
+                self.lam.get(dim.name, 0.0)
+                for dim in self.space.dims
+                if isinstance(dim, CategoricalDimension)
+            ]
+        )
+        if lam_cat > 0:
+            self.gprior["sd"] = 1.0 / np.sqrt(lam_cat)
 
-    @property
-    def gprior(self) -> GaussianPrior:
-        """Gaussian prior for the variable group."""
-        return GaussianPrior(mean=self._gprior[0], sd=self._gprior[1])
-
-    @property
-    def uprior(self) -> UniformPrior:
-        """Uniform prior for the variable group."""
-        return UniformPrior(lb=self._uprior[0], ub=self._uprior[1])
-
-    @property
-    def priors(self) -> list[Prior]:
-        """List of Gaussian and Uniform priors for the variable group."""
-        return [self.gprior, self.uprior]
+    @classmethod
+    def from_config(cls, config: dict, spaces: dict[str, Space]) -> VariableBuilder:
+        space_name = config.get("space")
+        if space_name:
+            config["space"] = spaces[space_name]
+        return cls(**config)
 
     @property
     def size(self) -> int:
         """Number of variables in the variable group."""
-        if self.dim is None:
-            return 1
-        return self.dim.size
+        return self.space.size
 
-    def get_variables(self) -> list[Variable]:
+    def build_variables(self) -> list[dict]:
         """Returns the list of variables in the variable group."""
-        if self.dim is None:
-            return [Variable(self.col, priors=self.priors)]
         variables = [
-            Variable(name, priors=self.priors)
-            for name in self.dim.get_dummy_names(self.col)
+            dict(name=name, gprior=self.gprior, uprior=self.uprior)
+            for name in self.space.build_encoded_names(self.name)
         ]
         return variables
 
-    def get_smoothing_gprior(self) -> tuple[NDArray, NDArray]:
+    def build_smoothing_prior(self) -> dict[str, NDArray]:
         """Returns the smoothing Gaussian prior for the variable group.
 
         If the dimension is numerical and lam > 0, a Gaussian prior with
@@ -120,18 +108,16 @@ class VarGroup:
 
         Returns
         -------
-        tuple[NDArray, NDArray]
+        dict[str, NDArray]
             Smoothing Gaussian prior matrix and vector.
 
         """
-        if self.dim is None:
-            return np.empty((0, self.size)), np.empty(shape=(2, 0))
-        return self.dim.get_smoothing_gprior(
+        return self.space.build_smoothing_prior(
             self.lam, self.lam_mean, self.scale_by_distance
         )
 
-    def expand_data(self, data: DataFrame) -> DataFrame:
-        """Expand the variable into multiple columns based on the dimension.
+    def encode(self, data: DataFrame) -> DataFrame:
+        """Encode variable column based on the space.
 
         Parameters
         ----------
@@ -141,9 +127,7 @@ class VarGroup:
         Returns
         -------
         DataFrame
-            Expanded variable columns.
+            Encoded variable columns.
 
         """
-        if self.dim is None:
-            return DataFrame(index=data.index)
-        return self.dim.get_dummies(data, column=self.col)
+        return self.space.encode(data, column=self.name)
