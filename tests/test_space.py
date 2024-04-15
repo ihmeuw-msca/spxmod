@@ -1,8 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
-
-from regmodsm.space import Space
+from spxmod.space import Space
 
 
 @pytest.fixture
@@ -42,20 +41,8 @@ def test_set_span(space, data):
 
 def test_encode(space, data):
     space.set_span(data=data)
-    variables = space.encode(data=data, column="sdi")
-    variables = variables.astype(float)
-    assert variables.equals(
-        pd.DataFrame(
-            {
-                "sdi_location_id*age_mid_0": [1.0, 0, 0, 0, 0],
-                "sdi_location_id*age_mid_1": [0, 2.0, 0, 0, 0],
-                "sdi_location_id*age_mid_2": [0, 0, 3.0, 0, 0],
-                "sdi_location_id*age_mid_3": [0, 0, 0, 4.0, 0],
-                "sdi_location_id*age_mid_4": [0, 0, 0, 0, 5.0],
-                "sdi_location_id*age_mid_5": [0, 0, 0, 0, 0.0],
-            }
-        )
-    )
+    mat = space.encode(data=data, column="sdi")
+    assert np.allclose(mat.toarray(), np.diag(np.arange(1, 7, dtype=float))[:5])
 
 
 def test_build_smoothing_prior(space, data):
@@ -63,7 +50,7 @@ def test_build_smoothing_prior(space, data):
     prior = space.build_smoothing_prior(lam=1.0, lam_mean=0.0)
 
     assert np.allclose(
-        prior["mat"],
+        prior["mat"].toarray(),
         np.array(
             [
                 [1.0, -1.0, 0.0, 0.0, 0.0, 0.0],

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import numpy as np
-from regmodsm.dimension import CategoricalDimension
-from regmodsm.space import Space
-from regmodsm._typing import DataFrame, NDArray
+
+from spxmod.dimension import CategoricalDimension
+from spxmod.space import Space
+from spxmod.typing import DataFrame, NDArray
 
 
 class VariableBuilder:

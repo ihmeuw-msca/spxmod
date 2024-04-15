@@ -14,7 +14,7 @@ if __name__ == "__main__":
     with (base_dir / "README.rst").open() as f:
         long_description = f.read()
 
-    install_requirements = ["regmod==0.1.1", "Cython"]
+    install_requirements = ["regmod==0.1.2", "Cython"]
 
     test_requirements = [
         "pytest",
@@ -24,12 +24,12 @@ if __name__ == "__main__":
     doc_requirements = []
 
     setup(
-        name="regmodsm",
+        name="spxmod",
         version="0.2.1",
         description="Regression model smoother",
         long_description=long_description,
         license="LICENSE",
-        url="https://github.com/ihmeuw-msca/regmodsm",
+        url="https://github.com/ihmeuw-msca/spxmod",
         author="IHME Math Sciences",
         author_email="ihme.math.sciences@gmail.com",
         package_dir={"": "src"},
@@ -42,7 +42,7 @@ if __name__ == "__main__":
             "test": test_requirements,
             "dev": doc_requirements + test_requirements,
         },
-        ext_modules=cythonize("src/regmodsm/linalg.pyx"),
+        ext_modules=cythonize("src/spxmod/linalg.pyx"),
         include_dirs=[numpy.get_include()],
         zip_safe=False,
     )

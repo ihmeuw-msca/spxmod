@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import itertools
 import functools
+import itertools
+
 import numpy as np
 from scipy.sparse import coo_matrix, identity, kron, vstack
-from regmodsm.dimension import build_dimension, Dimension, NumericalDimension
-from regmodsm._typing import DataFrame, NDArray
+
+from spxmod.dimension import Dimension, NumericalDimension, build_dimension
+from spxmod.typing import DataFrame, NDArray
 
 
 class Space:

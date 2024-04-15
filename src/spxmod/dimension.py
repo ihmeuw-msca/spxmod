@@ -1,6 +1,7 @@
 import numpy as np
-from regmodsm._typing import DataFrame, NDArray
 from scipy.sparse import coo_matrix
+
+from spxmod.typing import DataFrame, NDArray
 
 
 class Dimension:

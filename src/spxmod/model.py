@@ -10,7 +10,7 @@ the differences between neighboring coefficients. This ensures that
 coefficients vary smoothly by age. The uniform prior forces the
 coefficients to have positive values.
 
->>> from regmodsm.model import Model
+>>> from spxmod.model import XModel
 >>> config = dict(
         model_type="binomial",
         obs="obs_rate",
@@ -18,14 +18,14 @@ coefficients to have positive values.
         var_builders=[dict(name="mean_BMI", space="age_mid", lam=1.0, uprior=dict(lb=0.0))],
         weights="sample_size",
     )
->>> model = Model.from_config(config)
+>>> model = XModel.from_config(config)
 
 Fit a RegMod model with intercept values smoothed by region. In this
 model, a different intercept is fit for each unique value of
 `region_id`. A Gaussian prior with mean 0 and standard deviation
 1/sqrt(lam) is set on the mean of the intercept values.
 
->>> from regmodsm.model import Model
+>>> from spxmod.model import XModel
 >>> config = dict(
         model_type="binomial",
         obs="obs_rate",
@@ -33,13 +33,13 @@ model, a different intercept is fit for each unique value of
         var_builders=[dict(name="intercept", space="region_id", lam_mean=1.0)],
         weights="sample_size",
     )
->>> model = Model.from_config(config)
+>>> model = XModel.from_config(config)
 
 Fit a RegMod model with intercept values smoothed by age-year. In this
 model, a different intercept is fit for each unique age_group_id-year_id
 pair.
 
->>> from regmodsm.model import Model
+>>> from spxmod.model import XModel
 >>> config = dict(
         model_type="binomial",
         obs="obs_rate",
@@ -54,7 +54,7 @@ pair.
         var_builders=[dict(name="intercept", space="age_group_id*year_id")],
         weights="sample_size",
     )
->>> model = Model.from_config(config)
+>>> model = XModel.from_config(config)
 
 """
 
@@ -67,13 +67,14 @@ from msca.linalg.matrix import asmatrix
 from scipy.sparse import block_diag, coo_matrix, csc_matrix, hstack
 from scipy.stats import norm
 
-from regmodsm._typing import DataFrame, NDArray, RegmodModel
-from regmodsm.linalg import get_pred_var
-from regmodsm.regmod_builder import build_regmod_model
-from regmodsm.space import Space
-from regmodsm.variable_builder import VariableBuilder
+from spxmod.linalg import get_pred_var
+from spxmod.regmod_builder import build_regmod_model
+from spxmod.space import Space
+from spxmod.typing import DataFrame, NDArray, RegmodModel
+from spxmod.variable_builder import VariableBuilder
 
-class Model:
+
+class XModel:
     """RegMod Smooth model.
 
     Parameters
@@ -115,7 +116,7 @@ class Model:
         self.core: RegmodModel | None = None
 
     @classmethod
-    def from_config(cls, config: dict) -> Model:
+    def from_config(cls, config: dict) -> XModel:
         spaces = list(map(Space.from_config, config["spaces"]))
         var_builder_from_config = functools.partial(
             VariableBuilder.from_config, spaces={space.name: space for space in spaces}

@@ -1,9 +1,8 @@
 import numpy as np
 import pandas as pd
 import pytest
-
-from regmodsm.space import Space
-from regmodsm.variable_builder import VariableBuilder
+from spxmod.space import Space
+from spxmod.variable_builder import VariableBuilder
 
 
 @pytest.fixture
@@ -57,8 +56,8 @@ def test_encode(data, dimensions):
     space = Space.from_config(dict(dims=[dimensions["age"]]))
     space.set_span(data)
     var_builder = VariableBuilder(name="sdi", space=space, lam=1.0)
-    expanded_data = var_builder.encode(data)
-    assert expanded_data.shape == (6, 3)
-    assert np.allclose(expanded_data["sdi_age_0"], [1, 0, 0, 1, 0, 0])
-    assert np.allclose(expanded_data["sdi_age_1"], [0, 0, 2, 0, 0, 2])
-    assert np.allclose(expanded_data["sdi_age_2"], [0, 3, 0, 0, 3, 0])
+    mat = var_builder.encode(data).toarray()
+    assert mat.shape == (6, 3)
+    assert np.allclose(mat[:, 0], [1, 0, 0, 1, 0, 0])
+    assert np.allclose(mat[:, 1], [0, 0, 2, 0, 0, 2])
+    assert np.allclose(mat[:, 2], [0, 3, 0, 0, 3, 0])

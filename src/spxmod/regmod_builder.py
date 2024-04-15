@@ -1,12 +1,13 @@
 import numpy as np
 import scipy.sparse as sp
-from msca.linalg.matrix import asmatrix, Matrix
-from msca.optim.solver import NTSolver, IPSolver
+from msca.linalg.matrix import Matrix, asmatrix
+from msca.optim.solver import IPSolver, NTSolver
 from regmod.data import Data
-from regmod.variable import Variable
-from regmod.prior import LinearGaussianPrior, GaussianPrior, UniformPrior
 from regmod.models import BinomialModel, GaussianModel, PoissonModel
-from regmodsm._typing import RegmodModel, NDArray, Callable
+from regmod.prior import GaussianPrior, LinearGaussianPrior, UniformPrior
+from regmod.variable import Variable
+
+from spxmod.typing import Callable, NDArray, RegmodModel
 
 
 def msca_optimize(
@@ -30,7 +31,6 @@ def msca_optimize(
 
 
 class SparseBinomialModel(BinomialModel):
-
     def hessian_from_gprior(self) -> Matrix:
         """Hessian matrix from the Gaussian prior.
 
@@ -64,7 +64,6 @@ def build_regmod_model(
     linear_gpriors: list[dict],
     param_specs: dict,
 ) -> RegmodModel:
-
     # build data
     data = Data(**data)
 
