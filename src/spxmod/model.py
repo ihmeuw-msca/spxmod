@@ -63,12 +63,9 @@ from __future__ import annotations
 import functools
 
 import numpy as np
-from msca.linalg.matrix import asmatrix
-from scipy.sparse import block_diag, coo_matrix, csc_matrix, hstack
-from scipy.stats import norm
+from scipy.sparse import block_diag, coo_matrix, hstack
 
-from spxmod.linalg import get_pred_var
-from spxmod.regmod_builder import build_regmod_model, get_vcov
+from spxmod.regmod_builder import build_regmod_model
 from spxmod.space import Space
 from spxmod.typing import DataFrame, NDArray, RegmodModel
 from spxmod.variable_builder import VariableBuilder
@@ -179,10 +176,7 @@ class XModel:
         """
         self._set_core_config(data if data_span is None else data_span)
         self.core = self._build_core()
-        mat = self._encode(data)
-        _attach_data(self.core, mat, data)
-        self.core.fit(**optimizer_options)
-        _detach_data(self.core)
+        self.core.fit(data, self._encode, **optimizer_options)
 
     def predict(
         self,
@@ -208,70 +202,4 @@ class XModel:
             is also returned.
 
         """
-        mat = csc_matrix(self._encode(data))
-        param = self.core.params[0]
-        coef = self.core.opt_coefs
-
-        offset = np.zeros(len(data))
-        if param.offset is not None:
-            offset = data[param.offset].to_numpy()
-
-        lin_param = offset + mat.dot(coef)
-        pred = param.inv_link.fun(lin_param)
-
-        if return_ui:
-            if alpha < 0 or alpha > 0.5:
-                raise ValueError("`alpha` has to be between 0 and 0.5")
-            # TODO: explore the sparsity of the variance-covariance matrix
-            vcov = get_vcov(self.core.opt_hessian, self.core.opt_jacobian2)
-            lin_param_sd = np.sqrt(get_pred_var(mat, vcov))
-            lin_param_lower = norm.ppf(
-                0.5 * alpha, loc=lin_param, scale=lin_param_sd
-            )
-            lin_param_upper = norm.ppf(
-                1 - 0.5 * alpha, loc=lin_param, scale=lin_param_sd
-            )
-            pred = np.vstack(
-                [
-                    pred,
-                    param.inv_link.fun(lin_param_lower),
-                    param.inv_link.fun(lin_param_upper),
-                ]
-            )
-        return pred
-
-
-def _attach_data(
-    model: RegmodModel, mat: coo_matrix, data: DataFrame
-) -> RegmodModel:
-    model.data.attach_df(data)
-    model.mat = [asmatrix(csc_matrix(mat))]
-    model.uvec = model.get_uvec()
-    model.gvec = model.get_gvec()
-    model.linear_uvec = model.get_linear_uvec()
-    model.linear_gvec = model.get_linear_gvec()
-    model.linear_umat = asmatrix(csc_matrix((0, model.size)))
-    model.linear_gmat = asmatrix(csc_matrix((0, model.size)))
-    param = model.params[0]
-    if model.params[0].linear_gpriors:
-        model.linear_gmat = asmatrix(csc_matrix(param.linear_gpriors[0].mat))
-
-    # constraints
-    model.cmat = asmatrix(csc_matrix((0, model.size)))
-    model.cvec = np.empty((2, 0))
-
-    return model
-
-
-def _detach_data(model: RegmodModel) -> RegmodModel:
-    """Detach input data and model arrays from the RegMod model."""
-    model.data.detach_df()
-    del model.mat
-    del model.uvec
-    del model.gvec
-    del model.linear_uvec
-    del model.linear_gvec
-    del model.linear_umat
-    del model.linear_gmat
-
-    return model
+        return self.core.predict(data, self._encode, return_ui, alpha)
