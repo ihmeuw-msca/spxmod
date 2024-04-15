@@ -53,19 +53,20 @@ class SparseRegmodModel(RegmodModel):
             )
         if self.params[0].linear_upriors:
             self.linear_umat = asmatrix(
-                sp.coo_matrix(param.linear_upriors[0].mat)
+                sp.csc_matrix(param.linear_upriors[0].mat)
             )
 
         # parse constraints
         cmat = asmatrix(
             sp.vstack(
-                [sp.identity(self.mat.shape[1]), self.linear_umat], format="csr"
+                [sp.identity(self.mat[0].shape[1]), self.linear_umat],
+                format="csr",
             )
         )
         cvec = np.hstack([self.uvec, self.linear_uvec])
 
         if cmat.size > 0:
-            scale = abs(cmat).max(axis=1)
+            scale = abs(cmat).max(axis=1).toarray().ravel()
             valid = ~np.isclose(scale, 0.0)
             cmat, cvec, scale = cmat[valid], cvec[:, valid], scale[valid]
             if scale.size > 0:
@@ -77,9 +78,9 @@ class SparseRegmodModel(RegmodModel):
                 cmat = sp.vstack(
                     [-cmat[neg_valid], cmat[pos_valid]], format="csr"
                 )
-                cvec = np.hstack([-cvec[0][neg_valid], cvec[0][pos_valid]])
+                cvec = np.hstack([-cvec[0][neg_valid], cvec[1][pos_valid]])
 
-        self.cmat = asmatrix(cmat)
+        self.cmat = asmatrix(sp.csc_matrix(cmat))
         self.cvec = cvec
 
     def detach_df(self) -> None:
@@ -103,7 +104,7 @@ class SparseRegmodModel(RegmodModel):
             Hessian matrix.
 
         """
-        hess = sp.diags(1.0 / self.gvec[1] ** 2)
+        hess = sp.diags(1.0 / self.gvec[1] ** 2, format="csr")
         if self.linear_gvec.size > 0:
             hess += (
                 self.linear_gmat.T.scale_cols(1.0 / self.linear_gvec[1] ** 2)
