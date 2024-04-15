@@ -68,7 +68,7 @@ from scipy.sparse import block_diag, coo_matrix, csc_matrix, hstack
 from scipy.stats import norm
 
 from spxmod.linalg import get_pred_var
-from spxmod.regmod_builder import build_regmod_model
+from spxmod.regmod_builder import build_regmod_model, get_vcov
 from spxmod.space import Space
 from spxmod.typing import DataFrame, NDArray, RegmodModel
 from spxmod.variable_builder import VariableBuilder
@@ -223,7 +223,7 @@ class XModel:
             if alpha < 0 or alpha > 0.5:
                 raise ValueError("`alpha` has to be between 0 and 0.5")
             # TODO: explore the sparsity of the variance-covariance matrix
-            vcov = self.core.opt_vcov
+            vcov = get_vcov(self.core.opt_hessian, self.core.opt_jacobian2)
             lin_param_sd = np.sqrt(get_pred_var(mat, vcov))
             lin_param_lower = norm.ppf(
                 0.5 * alpha, loc=lin_param, scale=lin_param_sd

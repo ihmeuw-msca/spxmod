@@ -101,3 +101,29 @@ def _build_regmod_variable(name: str, gprior: dict, uprior: dict) -> Variable:
     gprior = GaussianPrior(**gprior)
     uprior = UniformPrior(**uprior)
     return Variable(name=name, priors=[gprior, uprior])
+
+
+def get_vcov(hessian: Matrix, jacobian2: Matrix) -> NDArray:
+    hessian, jacobian2 = hessian.to_numpy(), jacobian2.to_numpy()
+
+    # inverse hessian
+    eig_vals, eig_vecs = np.linalg.eigh(hessian)
+    if np.isclose(eig_vals, 0.0).any():
+        raise ValueError(
+            "singular Hessian matrix, please add priors or "
+            "reduce number of variables"
+        )
+    inv_hessian = (eig_vecs / eig_vals).dot(eig_vecs.T)
+
+    # inspect jacobian2
+    eig_vals = np.linalg.eigvalsh(jacobian2)
+    if np.isclose(eig_vals, 0.0).any():
+        raise ValueError(
+            "singular Jacobian matrix, please add priors or "
+            "reduce number of variables"
+        )
+
+    vcov = inv_hessian.dot(jacobian2)
+    vcov = inv_hessian.dot(vcov.T)
+
+    return vcov
