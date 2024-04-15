@@ -51,10 +51,36 @@ class SparseRegmodModel(RegmodModel):
             self.linear_gmat = asmatrix(
                 sp.csc_matrix(param.linear_gpriors[0].mat)
             )
+        if self.params[0].linear_upriors:
+            self.linear_umat = asmatrix(
+                sp.coo_matrix(param.linear_upriors[0].mat)
+            )
 
-        # constraints
-        self.cmat = asmatrix(sp.csc_matrix((0, self.size)))
-        self.cvec = np.empty((2, 0))
+        # parse constraints
+        cmat = asmatrix(
+            sp.vstack(
+                [sp.identity(self.mat.shape[1]), self.linear_umat], format="csr"
+            )
+        )
+        cvec = np.hstack([self.uvec, self.linear_uvec])
+
+        if cmat.size > 0:
+            scale = abs(cmat).max(axis=1)
+            valid = ~np.isclose(scale, 0.0)
+            cmat, cvec, scale = cmat[valid], cvec[:, valid], scale[valid]
+            if scale.size > 0:
+                cmat = cmat.scale_rows(1.0 / scale)
+                cvec = cvec / scale
+
+                neg_valid = ~np.isneginf(cvec[0])
+                pos_valid = ~np.isposinf(cvec[1])
+                cmat = sp.vstack(
+                    [-cmat[neg_valid], cmat[pos_valid]], format="csr"
+                )
+                cvec = np.hstack([-cvec[0][neg_valid], cvec[0][pos_valid]])
+
+        self.cmat = asmatrix(cmat)
+        self.cvec = cvec
 
     def detach_df(self) -> None:
         self.data.detach_df()
