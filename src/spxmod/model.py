@@ -119,9 +119,12 @@ class XModel:
     def from_config(cls, config: dict) -> XModel:
         spaces = list(map(Space.from_config, config["spaces"]))
         var_builder_from_config = functools.partial(
-            VariableBuilder.from_config, spaces={space.name: space for space in spaces}
+            VariableBuilder.from_config,
+            spaces={space.name: space for space in spaces},
         )
-        var_builders = list(map(var_builder_from_config, config["var_builders"]))
+        var_builders = list(
+            map(var_builder_from_config, config["var_builders"])
+        )
 
         config["spaces"] = spaces
         config["var_builders"] = var_builders
@@ -222,7 +225,9 @@ class XModel:
             # TODO: explore the sparsity of the variance-covariance matrix
             vcov = self.core.opt_vcov
             lin_param_sd = np.sqrt(get_pred_var(mat, vcov))
-            lin_param_lower = norm.ppf(0.5 * alpha, loc=lin_param, scale=lin_param_sd)
+            lin_param_lower = norm.ppf(
+                0.5 * alpha, loc=lin_param, scale=lin_param_sd
+            )
             lin_param_upper = norm.ppf(
                 1 - 0.5 * alpha, loc=lin_param, scale=lin_param_sd
             )
@@ -236,7 +241,9 @@ class XModel:
         return pred
 
 
-def _attach_data(model: RegmodModel, mat: coo_matrix, data: DataFrame) -> RegmodModel:
+def _attach_data(
+    model: RegmodModel, mat: coo_matrix, data: DataFrame
+) -> RegmodModel:
     model.data.attach_df(data)
     model.mat = [asmatrix(csc_matrix(mat))]
     model.uvec = model.get_uvec()

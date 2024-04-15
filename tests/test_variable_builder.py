@@ -42,7 +42,9 @@ def test_categorical_lam(data, dimensions, lam, gprior_sd):
         (1.0, True, np.array([1.0, 3.0])),
     ],
 )
-def test_numerical_lam(data, dimensions, lam, scale_by_distance, smooth_gprior_sd):
+def test_numerical_lam(
+    data, dimensions, lam, scale_by_distance, smooth_gprior_sd
+):
     space = Space.from_config(dict(dims=[dimensions["age"]]))
     space.set_span(data)
     var_builder = VariableBuilder(

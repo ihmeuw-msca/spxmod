@@ -101,7 +101,11 @@ class Space:
             Encoded dataframe.
 
         """
-        val = np.ones(len(data)) if column == "intercept" else data[column].to_numpy()
+        val = (
+            np.ones(len(data))
+            if column == "intercept"
+            else data[column].to_numpy()
+        )
         row = np.arange(len(data), dtype=int)
         col = np.zeros(len(data), dtype=int)
         if self.dims:

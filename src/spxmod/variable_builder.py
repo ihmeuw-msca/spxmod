@@ -78,7 +78,9 @@ class VariableBuilder:
             self.gprior["sd"] = 1.0 / np.sqrt(lam_cat)
 
     @classmethod
-    def from_config(cls, config: dict, spaces: dict[str, Space]) -> VariableBuilder:
+    def from_config(
+        cls, config: dict, spaces: dict[str, Space]
+    ) -> VariableBuilder:
         space_name = config.get("space")
         if space_name:
             config["space"] = spaces[space_name]

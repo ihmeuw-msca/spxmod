@@ -20,7 +20,11 @@ def msca_optimize(
         solver = NTSolver(model.objective, model.gradient, model.hessian)
     else:
         solver = IPSolver(
-            model.objective, model.gradient, model.hessian, model.cmat, model.cvec
+            model.objective,
+            model.gradient,
+            model.hessian,
+            model.cmat,
+            model.cvec,
         )
     result = solver.minimize(x0=x0, **options)
     model.opt_result = result
@@ -41,12 +45,14 @@ class SparseBinomialModel(BinomialModel):
         """
         hess = sp.diags(1.0 / self.gvec[1] ** 2)
         if self.linear_gvec.size > 0:
-            hess += (self.linear_gmat.T.scale_cols(1.0 / self.linear_gvec[1] ** 2)).dot(
-                self.linear_gmat
-            )
+            hess += (
+                self.linear_gmat.T.scale_cols(1.0 / self.linear_gvec[1] ** 2)
+            ).dot(self.linear_gmat)
         return asmatrix(hess)
 
-    def fit(self, optimizer: Callable = msca_optimize, **optimizer_options) -> None:
+    def fit(
+        self, optimizer: Callable = msca_optimize, **optimizer_options
+    ) -> None:
         super().fit(optimizer=optimizer, **optimizer_options)
 
 
