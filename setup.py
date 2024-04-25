@@ -26,7 +26,7 @@ if __name__ == "__main__":
     setup(
         name="spxmod",
         version="0.2.1",
-        description="Regression model smoother",
+        description="Coefficient-smoothing regression models",
         long_description=long_description,
         license="LICENSE",
         url="https://github.com/ihmeuw-msca/spxmod",
