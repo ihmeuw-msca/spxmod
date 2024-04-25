@@ -14,7 +14,7 @@ if __name__ == "__main__":
     with (base_dir / "README.rst").open() as f:
         long_description = f.read()
 
-    install_requirements = ["regmod==0.1.2", "Cython"]
+    install_requirements = ["regmod<0.2", "Cython"]
 
     test_requirements = [
         "pytest",
