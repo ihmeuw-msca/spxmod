@@ -1,2 +1,0 @@
-Regresson Model Smoother
-========================
