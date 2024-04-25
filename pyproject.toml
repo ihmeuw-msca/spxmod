@@ -3,9 +3,9 @@ requires = ["setuptools", "Cython", "numpy", "scipy"]
 build-backend = "setuptools.build_meta"
 
 # [project]
-# name = "regmodsm"
+# name = "spxmod"
 # version = "0.1.0"
-# description = "Regression model smoother"
+# description = "Coefficient-smoothing regression models"
 # readme = "README.rst"
 # requires-python = ">=3.10"
 # license = { file = "LICENSE" }
@@ -21,10 +21,10 @@ build-backend = "setuptools.build_meta"
 # docs = ["sphinx", "sphinx-autodoc-typehints", "furo"]
 
 # [project.urls]
-# github = "https://github.com/ihmeuw-msca/regmodsm"
+# github = "https://github.com/ihmeuw-msca/spxmod"
 
 # [tool.sphinx]
-# project = "regmodsm"
+# project = "spxmod"
 # author = "IHME Math Sciences"
 # copyright = "2023, IHME Math Sciences"
 # version = "0.1.0"
