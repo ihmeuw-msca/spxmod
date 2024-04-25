@@ -1,6 +1,7 @@
 import numpy as np
-from regmodsm._typing import DataFrame, NDArray
 from scipy.sparse import coo_matrix
+
+from spxmod.typing import DataFrame, NDArray
 
 
 class Dimension:
@@ -72,7 +73,9 @@ class NumericalDimension(Dimension):
         col = np.hstack([np.arange(self.size - 1), np.arange(1, self.size)])
         return coo_matrix((val, (row, col)), shape=(self.size - 1, self.size))
 
-    def build_smoothing_sd(self, lam: float, scale_by_distance: bool) -> NDArray:
+    def build_smoothing_sd(
+        self, lam: float, scale_by_distance: bool
+    ) -> NDArray:
         """Create the smoothing prior standard deviation vector for the numerical dimension.
 
         Parameters

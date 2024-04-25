@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import numpy as np
-from regmodsm.dimension import CategoricalDimension
-from regmodsm.space import Space
-from regmodsm._typing import DataFrame, NDArray
+
+from spxmod.dimension import CategoricalDimension
+from spxmod.space import Space
+from spxmod.typing import DataFrame, NDArray
 
 
 class VariableBuilder:
@@ -77,7 +78,9 @@ class VariableBuilder:
             self.gprior["sd"] = 1.0 / np.sqrt(lam_cat)
 
     @classmethod
-    def from_config(cls, config: dict, spaces: dict[str, Space]) -> VariableBuilder:
+    def from_config(
+        cls, config: dict, spaces: dict[str, Space]
+    ) -> VariableBuilder:
         space_name = config.get("space")
         if space_name:
             config["space"] = spaces[space_name]

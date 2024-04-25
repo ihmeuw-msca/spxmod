@@ -10,7 +10,7 @@ the differences between neighboring coefficients. This ensures that
 coefficients vary smoothly by age. The uniform prior forces the
 coefficients to have positive values.
 
->>> from regmodsm.model import Model
+>>> from spxmod.model import XModel
 >>> config = dict(
         model_type="binomial",
         obs="obs_rate",
@@ -18,14 +18,14 @@ coefficients to have positive values.
         var_builders=[dict(name="mean_BMI", space="age_mid", lam=1.0, uprior=dict(lb=0.0))],
         weights="sample_size",
     )
->>> model = Model.from_config(config)
+>>> model = XModel.from_config(config)
 
 Fit a RegMod model with intercept values smoothed by region. In this
 model, a different intercept is fit for each unique value of
 `region_id`. A Gaussian prior with mean 0 and standard deviation
 1/sqrt(lam) is set on the mean of the intercept values.
 
->>> from regmodsm.model import Model
+>>> from spxmod.model import XModel
 >>> config = dict(
         model_type="binomial",
         obs="obs_rate",
@@ -33,13 +33,13 @@ model, a different intercept is fit for each unique value of
         var_builders=[dict(name="intercept", space="region_id", lam_mean=1.0)],
         weights="sample_size",
     )
->>> model = Model.from_config(config)
+>>> model = XModel.from_config(config)
 
 Fit a RegMod model with intercept values smoothed by age-year. In this
 model, a different intercept is fit for each unique age_group_id-year_id
 pair.
 
->>> from regmodsm.model import Model
+>>> from spxmod.model import XModel
 >>> config = dict(
         model_type="binomial",
         obs="obs_rate",
@@ -54,24 +54,24 @@ pair.
         var_builders=[dict(name="intercept", space="age_group_id*year_id")],
         weights="sample_size",
     )
->>> model = Model.from_config(config)
-    
+>>> model = XModel.from_config(config)
+
 """
 
 from __future__ import annotations
 
+import functools
+
 import numpy as np
-import pandas as pd
-from scipy.linalg import block_diag
-from scipy.stats import norm
+from scipy.sparse import block_diag, coo_matrix, hstack
 
-from regmodsm.linalg import get_pred_var
-from regmodsm.space import Space
-from regmodsm.variable_builder import VariableBuilder
-from regmodsm.regmod_builder import build_regmod_model
-from regmodsm._typing import DataFrame, NDArray, RegmodModel
+from spxmod.regmod_builder import build_regmod_model
+from spxmod.space import Space
+from spxmod.typing import DataFrame, NDArray, RegmodModel
+from spxmod.variable_builder import VariableBuilder
 
-class Model:
+
+class XModel:
     """RegMod Smooth model.
 
     Parameters
@@ -113,12 +113,15 @@ class Model:
         self.core: RegmodModel | None = None
 
     @classmethod
-    def from_config(cls, config: dict) -> Model:
+    def from_config(cls, config: dict) -> XModel:
         spaces = list(map(Space.from_config, config["spaces"]))
-        var_builder_from_config = lambda config: VariableBuilder.from_config(
-            config, spaces={space.name: space for space in spaces}
+        var_builder_from_config = functools.partial(
+            VariableBuilder.from_config,
+            spaces={space.name: space for space in spaces},
         )
-        var_builders = list(map(var_builder_from_config, config["var_builders"]))
+        var_builders = list(
+            map(var_builder_from_config, config["var_builders"])
+        )
 
         config["spaces"] = spaces
         config["var_builders"] = var_builders
@@ -142,20 +145,15 @@ class Model:
         for var_builder in self.var_builders:
             prior = var_builder.build_smoothing_prior()
             mat.append(prior["mat"]), sd.append(prior["sd"])
-        mat, sd = block_diag(*mat), np.hstack(sd)
+        mat, sd = block_diag(mat), np.hstack(sd)
         return [dict(mat=mat, mean=0.0, sd=sd)]
 
     def _build_core(self) -> RegmodModel:
         return build_regmod_model(**self.core_config)
 
-    def _encode(self, data: DataFrame) -> DataFrame:
-        data = data.copy()
-        data["intercept"] = 1.0
-
-        for var_builder in self.var_builders:
-            data = pd.concat([data, var_builder.encode(data)], axis=1)
-
-        return data
+    def _encode(self, data: DataFrame) -> coo_matrix:
+        mats = [var_builder.encode(data) for var_builder in self.var_builders]
+        return hstack(mats)
 
     def fit(
         self,
@@ -176,12 +174,9 @@ class Model:
             Additional options for the optimizer.
 
         """
-        self._set_core_config(data_span or data)
+        self._set_core_config(data if data_span is None else data_span)
         self.core = self._build_core()
-        data = self._encode(data)
-        self.core.attach_df(data)
-        self.core.fit(**optimizer_options)
-        _detach_df(self.core)
+        self.core.fit(data, self._encode, **optimizer_options)
 
     def predict(
         self,
@@ -207,49 +202,4 @@ class Model:
             is also returned.
 
         """
-        data = self._encode(data)
-        self.core.data.attach_df(data)
-        param = self.core.params[0]
-        coef = self.core.opt_coefs
-
-        offset = np.zeros(len(data))
-        if param.offset is not None:
-            offset = data[param.offset].to_numpy()
-
-        mat = np.ascontiguousarray(param.get_mat(self.core.data))
-
-        lin_param = offset + mat.dot(coef)
-        pred = param.inv_link.fun(lin_param)
-
-        if return_ui:
-            if alpha < 0 or alpha > 0.5:
-                raise ValueError("`alpha` has to be between 0 and 0.5")
-            vcov = self.core.opt_vcov
-            lin_param_sd = np.sqrt(get_pred_var(mat, vcov))
-            lin_param_lower = norm.ppf(0.5 * alpha, loc=lin_param, scale=lin_param_sd)
-            lin_param_upper = norm.ppf(
-                1 - 0.5 * alpha, loc=lin_param, scale=lin_param_sd
-            )
-            pred = np.vstack(
-                [
-                    pred,
-                    param.inv_link.fun(lin_param_lower),
-                    param.inv_link.fun(lin_param_upper),
-                ]
-            )
-        self.core.data.detach_df()
-        return pred
-
-
-def _detach_df(model: RegmodModel) -> RegmodModel:
-    """Detach input data and model arrays from the RegMod model."""
-    model.data.detach_df()
-    del model.mat
-    del model.uvec
-    del model.gvec
-    del model.linear_uvec
-    del model.linear_gvec
-    del model.linear_umat
-    del model.linear_gmat
-
-    return model
+        return self.core.predict(data, self._encode, return_ui, alpha)

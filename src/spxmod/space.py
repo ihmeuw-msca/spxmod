@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-import itertools
 import functools
+import itertools
+
 import numpy as np
-from scipy.sparse import csc_matrix, coo_matrix, identity, kron, vstack
-from regmodsm.dimension import build_dimension, Dimension, NumericalDimension
-from regmodsm._typing import DataFrame, NDArray
+from scipy.sparse import coo_matrix, identity, kron, vstack
+
+from spxmod.dimension import Dimension, NumericalDimension, build_dimension
+from spxmod.typing import DataFrame, NDArray
 
 
 class Space:
@@ -99,20 +101,21 @@ class Space:
             Encoded dataframe.
 
         """
-        if not self.dims:
-            return DataFrame(index=data.index)
-        val = data[column].to_numpy()
-        row = np.arange(len(data))
-        col = (
-            data[self.dim_names]
-            .merge(self.span.reset_index(), how="left", on=self.dim_names)
-            .eval("index")
-            .to_numpy()
+        val = (
+            np.ones(len(data))
+            if column == "intercept"
+            else data[column].to_numpy()
         )
-        mat = csc_matrix((val, (row, col)), shape=(len(data), self.size))
-        return DataFrame.sparse.from_spmatrix(
-            mat, index=data.index, columns=self.build_encoded_names(column)
-        )
+        row = np.arange(len(data), dtype=int)
+        col = np.zeros(len(data), dtype=int)
+        if self.dims:
+            col = (
+                data[self.dim_names]
+                .merge(self.span.reset_index(), how="left", on=self.dim_names)
+                .eval("index")
+                .to_numpy()
+            )
+        return coo_matrix((val, (row, col)), shape=(len(data), self.size))
 
     def build_smoothing_prior(
         self,
@@ -162,7 +165,7 @@ class Space:
 
         # TODO: regmod cannot recognize sparse array as prior, this shouldn't
         # be necessary in the future
-        return dict(mat=mat.toarray(), sd=sd)
+        return dict(mat=mat, sd=sd)
 
 
 def _flatten_outer(x: NDArray, y: NDArray) -> NDArray:
