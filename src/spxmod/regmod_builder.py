@@ -3,7 +3,7 @@ from functools import cached_property
 import numpy as np
 import scipy.sparse as sp
 from msca.linalg.matrix import Matrix, asmatrix
-from msca.optim.solver import IPSolver, NTSolver
+from msca.optim.solver import IPSolver, NTCGSolver
 from regmod.data import Data
 from regmod.models import BinomialModel, GaussianModel, PoissonModel
 from regmod.prior import GaussianPrior, LinearGaussianPrior, UniformPrior
@@ -21,7 +21,7 @@ def msca_optimize(
     options = options or {}
 
     if model.cmat.size == 0:
-        solver = NTSolver(model.objective, model.gradient, model.hessian)
+        solver = NTCGSolver(model.objective, model.gradient, model.hessian)
     else:
         solver = IPSolver(
             model.objective,
@@ -211,11 +211,20 @@ class SparseBinomialModel(SparseRegmodModel, BinomialModel):
         z = np.exp(self.get_lin_param(coefs))
         likli_hess_scale = weights * (z / ((1 + z) ** 2))
 
-        prior_hess = self.hessian_from_gprior
         likli_hess_right = mat.scale_rows(likli_hess_scale)
         likli_hess = mat.T.dot(likli_hess_right)
 
-        return prior_hess + likli_hess
+        return self.hessian_from_gprior + likli_hess
+
+    def jacobian2(self, coefs: NDArray) -> NDArray:
+        mat = self.mat[0]
+        weights = self.data.weights * self.data.trim_weights
+        z = np.exp(self.get_lin_param(coefs))
+        likli_jac_scale = weights * (z / (1 + z) - self.data.obs)
+
+        likli_jac = mat.T.scale_cols(likli_jac_scale)
+        likli_jac2 = likli_jac.dot(likli_jac.T)
+        return self.hessian_from_gprior + likli_jac2
 
 
 class SparseGaussianModel(SparseRegmodModel, GaussianModel):
@@ -255,6 +264,16 @@ class SparseGaussianModel(SparseRegmodModel, GaussianModel):
         likli_hess = mat.T.dot(likli_hess_right)
 
         return prior_hess + likli_hess
+
+    def jacobian2(self, coefs: NDArray) -> NDArray:
+        mat = self.mat[0]
+        weights = self.data.weights * self.data.trim_weights
+        y = self.get_lin_param(coefs)
+        likli_jac_scale = weights * (y - self.data.obs)
+
+        likli_jac = mat.T.scale_cols(likli_jac_scale)
+        likli_jac2 = likli_jac.dot(likli_jac.T)
+        return self.hessian_from_gprior + likli_jac2
 
 
 class SparsePoissonModel(SparseRegmodModel, PoissonModel):
@@ -296,6 +315,16 @@ class SparsePoissonModel(SparseRegmodModel, PoissonModel):
         likli_hess = mat.T.dot(likli_hess_right)
 
         return prior_hess + likli_hess
+
+    def jacobian2(self, coefs: NDArray) -> NDArray:
+        mat = self.mat[0]
+        weights = self.data.weights * self.data.trim_weights
+        z = np.exp(self.get_lin_param(coefs))
+        likli_jac_scale = weights * (z - self.data.obs)
+
+        likli_jac = mat.T.scale_cols(likli_jac_scale)
+        likli_jac2 = likli_jac.dot(likli_jac.T)
+        return self.hessian_from_gprior + likli_jac2
 
 
 _model_dict = {
