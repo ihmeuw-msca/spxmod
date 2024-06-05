@@ -1,7 +1,9 @@
+from functools import cached_property
+
 import numpy as np
 import scipy.sparse as sp
 from msca.linalg.matrix import Matrix, asmatrix
-from msca.optim.solver import IPSolver, NTSolver
+from msca.optim.solver import IPSolver, NTCGSolver
 from regmod.data import Data
 from regmod.models import BinomialModel, GaussianModel, PoissonModel
 from regmod.prior import GaussianPrior, LinearGaussianPrior, UniformPrior
@@ -19,7 +21,7 @@ def msca_optimize(
     options = options or {}
 
     if model.cmat.size == 0:
-        solver = NTSolver(model.objective, model.gradient, model.hessian)
+        solver = NTCGSolver(model.objective, model.gradient, model.hessian)
     else:
         solver = IPSolver(
             model.objective,
@@ -95,6 +97,14 @@ class SparseRegmodModel(RegmodModel):
         del self.cmat
         del self.cvec
 
+    def get_lin_param(self, coefs: NDArray) -> NDArray:
+        mat = self.mat[0]
+        lin_param = mat.dot(coefs)
+        if self.params[0].offset is not None:
+            lin_param += self.data[self.params[0].offset].to_numpy()
+        return lin_param
+
+    @cached_property
     def hessian_from_gprior(self) -> Matrix:
         """Hessian matrix from the Gaussian prior.
 
@@ -169,13 +179,152 @@ class SparseRegmodModel(RegmodModel):
 class SparseBinomialModel(SparseRegmodModel, BinomialModel):
     """Sparse Binomial model."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.params[0].inv_link.name != "expit":
+            raise ValueError(
+                "Sparse Binomial model can only work with expit inv_link function"
+            )
+
+    def objective(self, coefs: NDArray) -> float:
+        weights = self.data.weights * self.data.trim_weights
+        y = self.get_lin_param(coefs)
+
+        prior_obj = self.objective_from_gprior(coefs)
+        likli_obj = weights.dot(
+            np.log(1 + np.exp(-y)) + (1 - self.data.obs) * y
+        )
+        return prior_obj + likli_obj
+
+    def gradient(self, coefs: NDArray) -> NDArray:
+        mat = self.mat[0]
+        weights = self.data.weights * self.data.trim_weights
+        z = np.exp(self.get_lin_param(coefs))
+
+        prior_grad = self.gradient_from_gprior(coefs)
+        likli_grad = mat.T.dot(weights * (z / (1 + z) - self.data.obs))
+        return prior_grad + likli_grad
+
+    def hessian(self, coefs: NDArray) -> Matrix:
+        mat = self.mat[0]
+        weights = self.data.weights * self.data.trim_weights
+        z = np.exp(self.get_lin_param(coefs))
+        likli_hess_scale = weights * (z / ((1 + z) ** 2))
+
+        likli_hess_right = mat.scale_rows(likli_hess_scale)
+        likli_hess = mat.T.dot(likli_hess_right)
+
+        return self.hessian_from_gprior + likli_hess
+
+    def jacobian2(self, coefs: NDArray) -> NDArray:
+        mat = self.mat[0]
+        weights = self.data.weights * self.data.trim_weights
+        z = np.exp(self.get_lin_param(coefs))
+        likli_jac_scale = weights * (z / (1 + z) - self.data.obs)
+
+        likli_jac = mat.T.scale_cols(likli_jac_scale)
+        likli_jac2 = likli_jac.dot(likli_jac.T)
+        return self.hessian_from_gprior + likli_jac2
+
 
 class SparseGaussianModel(SparseRegmodModel, GaussianModel):
     """Sparse Gaussian model."""
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.params[0].inv_link.name != "identity":
+            raise ValueError(
+                "Sparse Gaussian model can only work with identity inv_link function"
+            )
+
+    def objective(self, coefs: NDArray) -> float:
+        weights = self.data.weights * self.data.trim_weights
+        y = self.get_lin_param(coefs)
+
+        prior_obj = self.objective_from_gprior(coefs)
+        likli_obj = 0.5 * weights.dot((y - self.data.obs) ** 2)
+        return prior_obj + likli_obj
+
+    def gradient(self, coefs: NDArray) -> NDArray:
+        mat = self.mat[0]
+        weights = self.data.weights * self.data.trim_weights
+        y = self.get_lin_param(coefs)
+
+        prior_grad = self.gradient_from_gprior(coefs)
+        likli_grad = mat.T.dot(weights * (y - self.data.obs))
+        return prior_grad + likli_grad
+
+    def hessian(self, coefs: NDArray) -> Matrix:
+        mat = self.mat[0]
+        weights = self.data.weights * self.data.trim_weights
+        likli_hess_scale = weights
+
+        prior_hess = self.hessian_from_gprior
+        likli_hess_right = mat.scale_rows(likli_hess_scale)
+        likli_hess = mat.T.dot(likli_hess_right)
+
+        return prior_hess + likli_hess
+
+    def jacobian2(self, coefs: NDArray) -> NDArray:
+        mat = self.mat[0]
+        weights = self.data.weights * self.data.trim_weights
+        y = self.get_lin_param(coefs)
+        likli_jac_scale = weights * (y - self.data.obs)
+
+        likli_jac = mat.T.scale_cols(likli_jac_scale)
+        likli_jac2 = likli_jac.dot(likli_jac.T)
+        return self.hessian_from_gprior + likli_jac2
+
 
 class SparsePoissonModel(SparseRegmodModel, PoissonModel):
     """Sparse Poisson model."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.params[0].inv_link.name != "exp":
+            raise ValueError(
+                "Sparse Poisson model can only work with exp inv_link function"
+            )
+
+    def objective(self, coefs: NDArray) -> float:
+        weights = self.data.weights * self.data.trim_weights
+        y = self.get_lin_param(coefs)
+        z = np.exp(y)
+
+        prior_obj = self.objective_from_gprior(coefs)
+        likli_obj = weights.dot(z - self.data.obs * y)
+        return prior_obj + likli_obj
+
+    def gradient(self, coefs: NDArray) -> NDArray:
+        mat = self.mat[0]
+        weights = self.data.weights * self.data.trim_weights
+        z = np.exp(self.get_lin_param(coefs))
+
+        prior_grad = self.gradient_from_gprior(coefs)
+        likli_grad = mat.T.dot(weights * (z - self.data.obs))
+        return prior_grad + likli_grad
+
+    def hessian(self, coefs: NDArray) -> Matrix:
+        mat = self.mat[0]
+        weights = self.data.weights * self.data.trim_weights
+        z = np.exp(self.get_lin_param(coefs))
+        likli_hess_scale = weights * z
+
+        prior_hess = self.hessian_from_gprior
+        likli_hess_right = mat.scale_rows(likli_hess_scale)
+        likli_hess = mat.T.dot(likli_hess_right)
+
+        return prior_hess + likli_hess
+
+    def jacobian2(self, coefs: NDArray) -> NDArray:
+        mat = self.mat[0]
+        weights = self.data.weights * self.data.trim_weights
+        z = np.exp(self.get_lin_param(coefs))
+        likli_jac_scale = weights * (z - self.data.obs)
+
+        likli_jac = mat.T.scale_cols(likli_jac_scale)
+        likli_jac2 = likli_jac.dot(likli_jac.T)
+        return self.hessian_from_gprior + likli_jac2
 
 
 _model_dict = {
