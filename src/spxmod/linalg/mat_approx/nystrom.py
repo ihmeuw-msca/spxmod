@@ -35,7 +35,7 @@ class NystromApprox:
     ) -> None:
         if mat.shape[1] != probe.shape[0]:
             raise ValueError("mat and probe must have compatible shapes.")
-        self.mat = mat
+        self.mat, self.shape = mat, mat.shape
         if not np.allclose(probe.T.dot(probe), np.identity(probe.shape[1])):
             probe = np.linalg.qr(probe, mode="reduced").Q
         self.probe = probe
@@ -55,5 +55,14 @@ class NystromApprox:
 
         return u, s
 
-    def __matmul__(self, x: NDArray) -> NDArray:
+    def dot(self, x: NDArray) -> NDArray:
         return self.eigvecs @ (self._diag_eigvals @ (self.eigvecs.T @ x))
+
+    def matvec(self, x: NDArray) -> NDArray:
+        return self.dot(x)
+
+    def matmat(self, x: NDArray) -> NDArray:
+        return self.dot(x)
+
+    def __matmul__(self, x: NDArray) -> NDArray:
+        return self.dot(x)
