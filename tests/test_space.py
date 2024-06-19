@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+
 from spxmod.space import Space
 
 
@@ -41,7 +42,9 @@ def test_set_span(space, data):
 
 def test_encode(space, data):
     space.set_span(data=data)
-    mat = space.encode(data=data, column="sdi")
+    mat = data[["sdi"]].to_numpy()
+    coords = data[space.dim_names]
+    mat = space.encode(mat, coords)
     assert np.allclose(mat.toarray(), np.diag(np.arange(1, 7, dtype=float))[:5])
 
 

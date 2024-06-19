@@ -114,7 +114,7 @@ class Space:
                 .eval("index")
                 .to_numpy()
             )
-        col = np.add.outer(ncol * col, np.arange(ncol))
+        col = np.add.outer(ncol * col, np.arange(ncol)).ravel()
         return coo_matrix((vals, (row, col)), shape=(nrow, self.size * ncol))
 
     def build_smoothing_prior(

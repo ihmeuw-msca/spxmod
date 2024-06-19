@@ -10,6 +10,7 @@ from regmod.parameter import Parameter
 from regmod.prior import (
     GaussianPrior,
     LinearGaussianPrior,
+    LinearUniformPrior,
     SplineGaussianPrior,
     SplineUniformPrior,
     UniformPrior,
@@ -107,58 +108,48 @@ class SparseRegmodModel(RegmodModel):
         self,
         data: dict,
         variables: list[dict],
-        linear_gpriors: list[dict],
+        linear_gpriors: list[dict] | None = None,
+        linear_upriors: list[dict] | None = None,
         **kwargs,
     ):
         data = Data(**data)
 
         # build variables
-        variables = [_build_regmod_variable(**kwargs) for kwargs in variables]
+        variables = [_build_regmod_variable(**v) for v in variables]
+
+        linear_gpriors = linear_gpriors or []
+        linear_upriors = linear_upriors or []
 
         # build smoothing prior
-        for i, prior in enumerate(linear_gpriors):
-            if prior["mat"].size > 0:
-                linear_gpriors[i] = LinearGaussianPrior(**prior)
+        if linear_gpriors:
+            for i, prior in enumerate(linear_gpriors):
+                if prior["mat"].size > 0:
+                    linear_gpriors[i] = LinearGaussianPrior(**prior)
+
+        if linear_upriors:
+            for i, prior in enumerate(linear_upriors):
+                if prior["mat"].size > 0:
+                    linear_upriors[i] = LinearUniformPrior(**prior)
 
         param = SparseParameter(
             name=self.param_names[0],
             variables=variables,
             linear_gpriors=linear_gpriors,
+            linear_upriors=linear_upriors,
             **kwargs,
         )
         super().__init__(data, params=[param])
 
     def attach_df(self, df: DataFrame, encode: Callable) -> None:
+        param = self.params[0]
         self.data.attach_df(df)
         self.mat = [asmatrix(sp.csc_matrix(encode(df)))]
-        self.uvec = self.get_uvec()
-        self.gvec = self.get_gvec()
-        self.linear_uvec = self.get_linear_uvec()
-        self.linear_gvec = self.get_linear_gvec()
-
-        param = self.params[0]
-        variables = param.variables
-
-        linear_gmat = sp.block_diag(
-            [
-                (
-                    var.get_linear_gmat()
-                    if isinstance(var, SplineVariable)
-                    else np.empty((0, 1))
-                )
-                for var in variables
-            ]
-        )
-        if param.linear_gpriors:
-            linear_gmat = sp.vstack(
-                [linear_gmat] + [prior.mat for prior in param.linear_gpriors]
-            )
-            self.linear_gmat = asmatrix(sp.csc_matrix(linear_gmat))
-
-        if self.params[0].linear_upriors:
-            self.linear_umat = asmatrix(
-                sp.csc_matrix(param.linear_upriors[0].mat)
-            )
+        self.uvec = param.get_uvec()
+        self.gvec = param.get_gvec()
+        self.linear_uvec = param.get_linear_uvec()
+        self.linear_gvec = param.get_linear_gvec()
+        self.linear_gmat = param.get_linear_gmat()
+        self.linear_umat = param.get_linear_umat()
 
         # parse constraints
         cmat = asmatrix(
@@ -283,7 +274,7 @@ class SparseBinomialModel(SparseRegmodModel, BinomialModel):
 
     def __init__(self, *args, **kwargs):
         kwargs["inv_link"] = "expit"
-        super(SparseRegmodModel, self).__init__(*args, **kwargs)
+        SparseRegmodModel.__init__(self, *args, **kwargs)
 
     def objective(self, coefs: NDArray) -> float:
         weights = self.data.weights * self.data.trim_weights
@@ -331,7 +322,7 @@ class SparseGaussianModel(SparseRegmodModel, GaussianModel):
 
     def __init__(self, *args, **kwargs):
         kwargs["inv_link"] = "identity"
-        super(SparseRegmodModel, self).__init__(*args, **kwargs)
+        SparseRegmodModel.__init__(self, *args, **kwargs)
 
     def objective(self, coefs: NDArray) -> float:
         weights = self.data.weights * self.data.trim_weights
@@ -377,7 +368,7 @@ class SparsePoissonModel(SparseRegmodModel, PoissonModel):
 
     def __init__(self, *args, **kwargs):
         kwargs["inv_link"] = "exp"
-        super(SparseRegmodModel, self).__init__(*args, **kwargs)
+        SparseRegmodModel.__init__(self, *args, **kwargs)
 
     def objective(self, coefs: NDArray) -> float:
         weights = self.data.weights * self.data.trim_weights
@@ -431,26 +422,32 @@ def build_regmod_model(
     model_type: str,
     data: dict,
     variables: list[dict],
-    linear_gpriors: list[dict],
-    param_specs: dict,
+    linear_gpriors: list[dict] | None = None,
+    linear_upriors: list[dict] | None = None,
+    **kwargs,
 ) -> RegmodModel:
     return _model_dict[model_type](
         data,
         variables,
-        linear_gpriors,
-        **param_specs,
+        linear_gpriors or [],
+        linear_upriors or [],
+        **kwargs,
     )
 
 
 def _build_regmod_variable(
     name: str,
-    gprior: dict,
-    uprior: dict,
+    gprior: dict | None = None,
+    uprior: dict | None = None,
     spline: XSpline | None = None,
     spline_gpriors: list[dict] | None = None,
     spline_upriors: list[dict] | None = None,
 ) -> Variable:
-    priors = [GaussianPrior(**gprior), UniformPrior(**uprior)]
+    priors = []
+    if gprior is not None:
+        priors.append(GaussianPrior(**gprior))
+    if uprior is not None:
+        priors.append(UniformPrior(**uprior))
     if spline_gpriors is not None:
         priors += [
             SplineGaussianPrior(**spline_gprior)
