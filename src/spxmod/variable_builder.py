@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from xspline import XSpline
 
 from spxmod.dimension import CategoricalDimension
 from spxmod.space import Space
@@ -53,6 +54,9 @@ class VariableBuilder:
         gprior: dict[str, float] | None = None,
         uprior: dict[str, float] | None = None,
         scale_by_distance: bool = False,
+        spline: dict | None = None,
+        spline_gpriors: list[dict] | None = None,
+        spline_upriors: list[dict] | None = None,
     ) -> None:
         self.name = name
         self.space = space
@@ -61,6 +65,12 @@ class VariableBuilder:
         self.gprior = gprior or dict(mean=0.0, sd=np.inf)
         self.uprior = uprior or dict(lb=-np.inf, ub=np.inf)
         self.scale_by_distance = scale_by_distance
+
+        if spline is not None:
+            spline = XSpline(**spline)
+        self.spline: XSpline = spline
+        self.spline_gpriors = spline_gpriors
+        self.spline_upriors = spline_upriors
 
         # transfer lam to gprior when dim is categorical
         if isinstance(self.lam, float):
@@ -89,12 +99,21 @@ class VariableBuilder:
     @property
     def size(self) -> int:
         """Number of variables in the variable group."""
-        return self.space.size
+        if self.spline is None:
+            return self.space.size
+        return self.spline.num_spline_bases * self.space.size
 
     def build_variables(self) -> list[dict]:
         """Returns the list of variables in the variable group."""
         variables = [
-            dict(name=name, gprior=self.gprior, uprior=self.uprior)
+            dict(
+                name=name,
+                gprior=self.gprior,
+                uprior=self.uprior,
+                spline=self.spline,
+                spline_gpriors=self.spline_gpriors,
+                spline_upriors=self.spline_upriors,
+            )
             for name in self.space.build_encoded_names(self.name)
         ]
         return variables
@@ -133,4 +152,17 @@ class VariableBuilder:
             Encoded variable columns.
 
         """
-        return self.space.encode(data, column=self.name)
+        val = (
+            np.ones(len(data))
+            if self.name == "intercept"
+            else data[self.name].to_numpy()
+        )
+
+        if self.spline is not None:
+            mat = self.spline.design_mat(val)
+        else:
+            mat = val[:, np.newaxis]
+
+        coords = data[self.space.dim_names]
+
+        return self.space.encode(mat, coords)

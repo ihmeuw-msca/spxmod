@@ -84,7 +84,7 @@ class Space:
             return [column]
         return [f"{column}_{self.name}_{i}" for i in range(self.size)]
 
-    def encode(self, data: DataFrame, column: str = "intercept") -> DataFrame:
+    def encode(self, mat: NDArray, coords: DataFrame) -> DataFrame:
         """Encode the data into the space grid.
 
         Parameters
@@ -101,21 +101,21 @@ class Space:
             Encoded dataframe.
 
         """
-        val = (
-            np.ones(len(data))
-            if column == "intercept"
-            else data[column].to_numpy()
-        )
-        row = np.arange(len(data), dtype=int)
-        col = np.zeros(len(data), dtype=int)
+        vals = mat.ravel()
+        nrow, ncol = mat.shape
+
+        row = np.repeat(np.arange(nrow, dtype=int), ncol)
+        col = np.zeros(nrow, dtype=int)
         if self.dims:
             col = (
-                data[self.dim_names]
-                .merge(self.span.reset_index(), how="left", on=self.dim_names)
+                coords.merge(
+                    self.span.reset_index(), how="left", on=self.dim_names
+                )
                 .eval("index")
                 .to_numpy()
             )
-        return coo_matrix((val, (row, col)), shape=(len(data), self.size))
+        col = np.add.outer(ncol * col, np.arange(ncol))
+        return coo_matrix((vals, (row, col)), shape=(nrow, self.size * ncol))
 
     def build_smoothing_prior(
         self,
