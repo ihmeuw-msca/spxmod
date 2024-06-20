@@ -86,6 +86,9 @@ class VariableBuilder:
         )
         if lam_cat > 0:
             self.gprior["sd"] = 1.0 / np.sqrt(lam_cat)
+        if self.spline is not None:
+            self.gprior["size"] = self.spline.num_spline_bases
+            self.uprior["size"] = self.spline.num_spline_bases
 
     @classmethod
     def from_config(
@@ -134,8 +137,9 @@ class VariableBuilder:
             Smoothing Gaussian prior matrix and vector.
 
         """
+        size = 1 if self.spline is None else self.spline.num_spline_bases
         return self.space.build_smoothing_prior(
-            self.lam, self.lam_mean, self.scale_by_distance
+            size, self.lam, self.lam_mean, self.scale_by_distance
         )
 
     def encode(self, data: DataFrame) -> DataFrame:

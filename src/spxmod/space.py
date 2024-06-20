@@ -119,6 +119,7 @@ class Space:
 
     def build_smoothing_prior(
         self,
+        size: int,
         lam: float | dict[str, float] = 0.0,
         lam_mean: float = 0.0,
         scale_by_distance: bool = False,
@@ -143,7 +144,7 @@ class Space:
         """
         if isinstance(lam, float):
             lam = {name: lam for name in self.dim_names}
-        mat, sd = coo_matrix((0, self.size)), np.empty((0,))
+        mat, sd = coo_matrix((0, self.size * size)), np.empty((0,))
 
         mats_default = list(map(identity, self.dim_sizes))
         sds_default = list(map(np.ones, self.dim_sizes))
@@ -152,16 +153,23 @@ class Space:
             lam_i = lam[dim.name]
             if lam_i > 0.0 and isinstance(dim, NumericalDimension):
                 mats = mats_default.copy()
-                mats[i] = dim.build_smoothing_mat()
+                mats[i] = kron(dim.build_smoothing_mat(), identity(size))
                 mat = vstack([mat, functools.reduce(kron, mats)])
 
                 sds = sds_default.copy()
-                sds[i] = dim.build_smoothing_sd(lam_i, scale_by_distance)
+                sds[i] = np.repeat(
+                    dim.build_smoothing_sd(lam_i, scale_by_distance), size
+                )
                 sd = np.hstack([sd, functools.reduce(_flatten_outer, sds)])
 
         if lam_mean > 0.0:
-            mat = vstack([mat, np.repeat(1 / self.size, self.size)])
-            sd = np.hstack([sd, [1 / np.sqrt(lam_mean)]])
+            mat = vstack(
+                [
+                    mat,
+                    kron(np.repeat(1 / self.size, self.size), identity(size)),
+                ]
+            )
+            sd = np.hstack([sd, np.repeat(1 / np.sqrt(lam_mean), size)])
 
         # TODO: regmod cannot recognize sparse array as prior, this shouldn't
         # be necessary in the future
