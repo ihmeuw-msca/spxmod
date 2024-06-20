@@ -12,6 +12,7 @@ from regmod.prior import (
     LinearGaussianPrior,
     LinearUniformPrior,
     SplineGaussianPrior,
+    SplinePrior,
     SplineUniformPrior,
     UniformPrior,
 )
@@ -460,7 +461,11 @@ def _build_regmod_variable(
         ]
     if spline is None:
         return Variable(name=name, priors=priors)
-    return SplineVariable(name=name, spline=spline, priors=priors)
+    else:
+        for prior in priors:
+            if isinstance(prior, SplinePrior):
+                prior.attach_spline(spline)
+        return SplineVariable(name=name, spline=spline, priors=priors)
 
 
 def get_vcov(hessian: Matrix, jacobian2: Matrix) -> NDArray:
