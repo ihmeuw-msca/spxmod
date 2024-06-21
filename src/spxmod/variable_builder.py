@@ -14,12 +14,12 @@ class VariableBuilder:
 
     Parameters
     ----------
-    name : str
+    name
         Name of the variable column in the data.
-    space : Space, optional
+    space
         Space to partition the variable on. If None, the variable is
         not partitioned.
-    lam : float, optional
+    lam
         Regularization parameter for the coefficients in the variable
         group. Default is 0. If the dimension is numerical, a Gaussian
         prior with mean 0 and standard deviation 1/sqrt(lam) is set on
@@ -27,21 +27,31 @@ class VariableBuilder:
         dimension. If the dimension is categorical, a Gaussian prior
         with mean 0 and standard deviation 1/sqrt(lam) is set on the
         coefficients.
-    lam_mean : float, optional
+    lam_mean
         Regularization parameter for the mean of the coefficients in the
         variable group. Default is 1e-8. A Gaussian prior with mean 0
         and standard deviation 1/sqrt(lam_mean) is set on the mean of
         the coefficients.
-    gprior : tuple, optional
+    gprior
         Gaussian prior for the variable. Default is (0, np.inf).
         Argument is overwritten with (0, 1/sqrt(lam)) if dimension is
         categorical.
-    uprior : tuple, optional
+    uprior
         Uniform prior for the variable. Default is (-np.inf, np.inf).
     scale_by_distance : bool, optional
         Whether to scale the prior standard deviation by the distance
         between the neighboring values along the dimension. For
         numerical dimensions only. Default is False.
+    spline
+        Spline configuration for the variable. If None, variable will be parsed
+        as an instance of Variable, otherwise, it will be parsed as an instance
+        of SplineVariable.
+    spline_gpriors
+        Gaussian priors for the spline coefficients. For details please check
+        https://github.com/ihmeuw-msca/regmod/blob/release/0.1.2/src/regmod/prior.py
+    spline_upriors
+        Uniform priors for the spline coefficients. For details please check
+        https://github.com/ihmeuw-msca/regmod/blob/release/0.1.2/src/regmod/prior.py
 
     """
 

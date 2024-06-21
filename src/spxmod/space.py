@@ -84,21 +84,22 @@ class Space:
             return [column]
         return [f"{column}_{self.name}_{i}" for i in range(self.size)]
 
-    def encode(self, mat: NDArray, coords: DataFrame) -> DataFrame:
+    def encode(self, mat: NDArray, coords: DataFrame) -> coo_matrix:
         """Encode the data into the space grid.
 
         Parameters
         ----------
-        data : DataFrame
-            Dataframe that contains the coordinate information and the column
-            to encode.
-        column : str, optional
-            Column name to encode. Default is "intercept".
+        mat
+            Design matrix to be encoded, it should have the same number of rows
+            with `coords`.
+        coords
+            Coordinate data frame for each row of the design matrix. It's
+            columns should match with the space dimension name.
 
         Returns
         -------
-        DataFrame
-            Encoded dataframe.
+        coo_matrix
+            Encoded design matrix.
 
         """
         vals = mat.ravel()
