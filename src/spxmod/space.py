@@ -84,41 +84,43 @@ class Space:
             return [column]
         return [f"{column}_{self.name}_{i}" for i in range(self.size)]
 
-    def encode(self, data: DataFrame, column: str = "intercept") -> DataFrame:
+    def encode(self, mat: NDArray, coords: DataFrame) -> coo_matrix:
         """Encode the data into the space grid.
 
         Parameters
         ----------
-        data : DataFrame
-            Dataframe that contains the coordinate information and the column
-            to encode.
-        column : str, optional
-            Column name to encode. Default is "intercept".
+        mat
+            Design matrix to be encoded, it should have the same number of rows
+            with `coords`.
+        coords
+            Coordinate data frame for each row of the design matrix. It's
+            columns should match with the space dimension name.
 
         Returns
         -------
-        DataFrame
-            Encoded dataframe.
+        coo_matrix
+            Encoded design matrix.
 
         """
-        val = (
-            np.ones(len(data))
-            if column == "intercept"
-            else data[column].to_numpy()
-        )
-        row = np.arange(len(data), dtype=int)
-        col = np.zeros(len(data), dtype=int)
+        vals = mat.ravel()
+        nrow, ncol = mat.shape
+
+        row = np.repeat(np.arange(nrow, dtype=int), ncol)
+        col = np.zeros(nrow, dtype=int)
         if self.dims:
             col = (
-                data[self.dim_names]
-                .merge(self.span.reset_index(), how="left", on=self.dim_names)
+                coords.merge(
+                    self.span.reset_index(), how="left", on=self.dim_names
+                )
                 .eval("index")
                 .to_numpy()
             )
-        return coo_matrix((val, (row, col)), shape=(len(data), self.size))
+        col = np.add.outer(ncol * col, np.arange(ncol)).ravel()
+        return coo_matrix((vals, (row, col)), shape=(nrow, self.size * ncol))
 
     def build_smoothing_prior(
         self,
+        size: int,
         lam: float | dict[str, float] = 0.0,
         lam_mean: float = 0.0,
         scale_by_distance: bool = False,
@@ -143,7 +145,7 @@ class Space:
         """
         if isinstance(lam, float):
             lam = {name: lam for name in self.dim_names}
-        mat, sd = coo_matrix((0, self.size)), np.empty((0,))
+        mat, sd = coo_matrix((0, self.size * size)), np.empty((0,))
 
         mats_default = list(map(identity, self.dim_sizes))
         sds_default = list(map(np.ones, self.dim_sizes))
@@ -152,16 +154,23 @@ class Space:
             lam_i = lam[dim.name]
             if lam_i > 0.0 and isinstance(dim, NumericalDimension):
                 mats = mats_default.copy()
-                mats[i] = dim.build_smoothing_mat()
+                mats[i] = kron(dim.build_smoothing_mat(), identity(size))
                 mat = vstack([mat, functools.reduce(kron, mats)])
 
                 sds = sds_default.copy()
-                sds[i] = dim.build_smoothing_sd(lam_i, scale_by_distance)
+                sds[i] = np.repeat(
+                    dim.build_smoothing_sd(lam_i, scale_by_distance), size
+                )
                 sd = np.hstack([sd, functools.reduce(_flatten_outer, sds)])
 
         if lam_mean > 0.0:
-            mat = vstack([mat, np.repeat(1 / self.size, self.size)])
-            sd = np.hstack([sd, [1 / np.sqrt(lam_mean)]])
+            mat = vstack(
+                [
+                    mat,
+                    kron(np.repeat(1 / self.size, self.size), identity(size)),
+                ]
+            )
+            sd = np.hstack([sd, np.repeat(1 / np.sqrt(lam_mean), size)])
 
         # TODO: regmod cannot recognize sparse array as prior, this shouldn't
         # be necessary in the future
