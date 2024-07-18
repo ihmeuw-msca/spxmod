@@ -5,7 +5,6 @@ import itertools
 
 import numpy as np
 from scipy.sparse import coo_matrix, identity, kron, vstack
-
 from spxmod.dimension import Dimension, NumericalDimension, build_dimension
 from spxmod.typing import DataFrame, NDArray
 
@@ -115,7 +114,10 @@ class Space:
                 .eval("index")
                 .to_numpy()
             )
-        return coo_matrix((val, (row, col)), shape=(len(data), self.size))
+        index = ~np.isnan(col)
+        return coo_matrix(
+            (val[index], (row[index], col[index])), shape=(len(data), self.size)
+        )
 
     def build_smoothing_prior(
         self,

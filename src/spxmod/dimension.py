@@ -14,8 +14,9 @@ class Dimension:
 
     """
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, filter: str | None = None) -> None:
         self.name = name
+        self.filter = filter
         self._span: NDArray | None = None
 
     @property
@@ -37,7 +38,10 @@ class Dimension:
             Data to set the unique dimension values from.
 
         """
-        self._span = np.unique(data[self.name])
+        if self.filter is None:
+            self._span = np.unique(data[self.name])
+        else:
+            self._span = np.unique(data.query(self.filter)[self.name])
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(name={self.name})"
@@ -100,7 +104,9 @@ class NumericalDimension(Dimension):
         return sd
 
 
-def build_dimension(name: str, dim_type: str) -> Dimension:
+def build_dimension(
+    name: str, dim_type: str, filter: str | None = None
+) -> Dimension:
     """Create a dimension based on the dimension type.
 
     Parameters
@@ -117,8 +123,8 @@ def build_dimension(name: str, dim_type: str) -> Dimension:
 
     """
     if dim_type == "categorical":
-        return CategoricalDimension(name)
+        return CategoricalDimension(name, filter)
     elif dim_type == "numerical":
-        return NumericalDimension(name)
+        return NumericalDimension(name, filter)
     else:
         raise TypeError(f"Dimension type {dim_type} is not supported.")
