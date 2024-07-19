@@ -5,6 +5,7 @@ import itertools
 
 import numpy as np
 from scipy.sparse import coo_matrix, identity, kron, vstack
+
 from spxmod.dimension import Dimension, NumericalDimension, build_dimension
 from spxmod.typing import DataFrame, NDArray
 

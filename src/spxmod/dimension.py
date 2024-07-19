@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.sparse import coo_matrix
+
 from spxmod.typing import DataFrame, NDArray
 
 
