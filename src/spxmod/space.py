@@ -115,7 +115,10 @@ class Space:
                 .eval("index")
                 .to_numpy()
             )
-        return coo_matrix((val, (row, col)), shape=(len(data), self.size))
+        index = ~np.isnan(col)
+        return coo_matrix(
+            (val[index], (row[index], col[index])), shape=(len(data), self.size)
+        )
 
     def build_smoothing_prior(
         self,
