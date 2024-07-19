@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.sparse import coo_matrix
-
 from spxmod.typing import DataFrame, NDArray
 
 
@@ -11,12 +10,14 @@ class Dimension:
     ----------
     name : str
         Name of the dimension in the data.
+    skipna : bool, optional
+        Whether to exclude rows where name is nan. Default is True.
 
     """
 
-    def __init__(self, name: str, filter: str | None = None) -> None:
+    def __init__(self, name: str, skipna: bool = True) -> None:
         self.name = name
-        self.filter = filter
+        self.skipna = skipna
         self._span: NDArray | None = None
 
     @property
@@ -38,10 +39,12 @@ class Dimension:
             Data to set the unique dimension values from.
 
         """
-        if self.filter is None:
-            self._span = np.unique(data[self.name])
+        if self.skipna:
+            self._span = np.unique(
+                data.query(f"{self.name}.notna()")[self.name]
+            )
         else:
-            self._span = np.unique(data.query(self.filter)[self.name])
+            self._span = np.unique(data[self.name])
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(name={self.name})"
@@ -104,9 +107,7 @@ class NumericalDimension(Dimension):
         return sd
 
 
-def build_dimension(
-    name: str, dim_type: str, filter: str | None = None
-) -> Dimension:
+def build_dimension(name: str, dim_type: str, skipna: bool = True) -> Dimension:
     """Create a dimension based on the dimension type.
 
     Parameters
@@ -115,6 +116,8 @@ def build_dimension(
         Name of the dimension in the data.
     dim_type : {'categorical', 'numerical'}
         Type of the dimension.
+    skipna : bool, optional
+        Whether to exclude rows where name is nan. Default is True.
 
     Returns
     -------
@@ -123,8 +126,8 @@ def build_dimension(
 
     """
     if dim_type == "categorical":
-        return CategoricalDimension(name, filter)
+        return CategoricalDimension(name, skipna)
     elif dim_type == "numerical":
-        return NumericalDimension(name, filter)
+        return NumericalDimension(name, skipna)
     else:
         raise TypeError(f"Dimension type {dim_type} is not supported.")
