@@ -101,7 +101,7 @@ class SparseRegmodModel(RegmodModel):
         mat = self.mat[0]
         lin_param = mat.dot(coefs)
         if self.params[0].offset is not None:
-            lin_param += self.data[self.params[0].offset].to_numpy()
+            lin_param += self.data.get_cols(self.params[0].offset)
         return lin_param
 
     @cached_property
