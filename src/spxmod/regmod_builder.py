@@ -6,7 +6,12 @@ from msca.linalg.matrix import Matrix, asmatrix
 from msca.optim.solver import IPSolver, NTCGSolver
 from regmod.data import Data
 from regmod.models import BinomialModel, GaussianModel, PoissonModel
-from regmod.prior import GaussianPrior, LinearGaussianPrior, UniformPrior
+from regmod.prior import (
+    GaussianPrior,
+    LinearGaussianPrior,
+    LinearUniformPrior,
+    UniformPrior,
+)
 from regmod.variable import Variable
 from scipy.stats import norm
 
@@ -339,6 +344,7 @@ def build_regmod_model(
     data: dict,
     variables: list[dict],
     linear_gpriors: list[dict],
+    linear_upriors: list[dict],
     param_specs: dict,
 ) -> RegmodModel:
     # build data
@@ -348,9 +354,16 @@ def build_regmod_model(
     variables = [_build_regmod_variable(**kwargs) for kwargs in variables]
 
     # build smoothing prior
+    linear_gpriors_valid = []
     for i, prior in enumerate(linear_gpriors):
         if prior["mat"].size > 0:
-            linear_gpriors[i] = LinearGaussianPrior(**prior)
+            linear_gpriors_valid.append(LinearGaussianPrior(**prior))
+
+    # build order prior
+    linear_upriors_valid = []
+    for i, prior in enumerate(linear_upriors):
+        if prior["mat"].size > 0:
+            linear_upriors_valid.append(LinearUniformPrior(**prior))
 
     # buid regmod model
     model_class = _model_dict[model_type]
@@ -361,7 +374,8 @@ def build_regmod_model(
         param_specs={
             model_param: {
                 "variables": variables,
-                "linear_gpriors": linear_gpriors,
+                "linear_gpriors": linear_gpriors_valid,
+                "linear_upriors": linear_upriors_valid,
                 **param_specs,
             }
         },

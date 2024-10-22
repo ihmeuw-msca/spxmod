@@ -105,6 +105,7 @@ class XModel:
             data=dict(col_obs=obs, col_weights=weights),
             variables=[],
             linear_gpriors=[],
+            linear_upriors=[],
             param_specs=param_specs or {},
         )
         self.spaces = spaces
@@ -133,6 +134,7 @@ class XModel:
 
         self.core_config["variables"] = self._build_variables()
         self.core_config["linear_gpriors"] = self._build_linear_gpriors()
+        self.core_config["linear_upriors"] = self._build_linear_upriors()
 
     def _build_variables(self) -> list[dict]:
         variables = []
@@ -147,6 +149,14 @@ class XModel:
             mat.append(prior["mat"]), sd.append(prior["sd"])
         mat, sd = block_diag(mat), np.hstack(sd)
         return [dict(mat=mat, mean=0.0, sd=sd)]
+
+    def _build_linear_upriors(self) -> list[dict]:
+        mat = []
+        for var_builder in self.var_builders:
+            prior = var_builder.build_order_prior()
+            mat.append(prior["mat"])
+        mat = block_diag(mat)
+        return [dict(mat=mat, lb=-np.inf, ub=0.0)]
 
     def _build_core(self) -> RegmodModel:
         return build_regmod_model(**self.core_config)
