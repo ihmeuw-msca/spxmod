@@ -176,6 +176,27 @@ class Space:
         # be necessary in the future
         return dict(mat=mat, sd=sd)
 
+    def build_order_prior(
+        self,
+        order_dim: str = "",
+        order: list[list[int]] | None = None,
+    ) -> dict[str, NDArray]:
+        mat = coo_matrix((0, self.size))
+        if order_dim == "":
+            return dict(mat=mat)
+
+        mats_default = list(map(identity, self.dim_sizes))
+
+        for i, dim in enumerate(self.dims):
+            if dim.name == order_dim and isinstance(dim, NumericalDimension):
+                mats = mats_default.copy()
+                mats[i] = vstack(
+                    [dim.build_order_mat(order_item) for order_item in order]
+                )
+                mat = vstack([mat, functools.reduce(kron, mats)])
+
+        return dict(mat=mat)
+
 
 def _flatten_outer(x: NDArray, y: NDArray) -> NDArray:
     """Flatten the outer product of two arrays.

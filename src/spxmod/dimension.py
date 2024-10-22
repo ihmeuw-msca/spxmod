@@ -99,6 +99,13 @@ class NumericalDimension(Dimension):
             sd *= delta
         return sd
 
+    def build_order_mat(self, order: list[list[int]]) -> coo_matrix:
+        size = len(order)
+        val = np.hstack([np.ones(size - 1), -np.ones(size - 1)])
+        row = np.tile(np.arange(size - 1), 2)
+        col = np.hstack([order[:-1], order[1:]])
+        return coo_matrix((val, (row, col)), shape=(size - 1, self.size))
+
 
 def build_dimension(name: str, dim_type: str) -> Dimension:
     """Create a dimension based on the dimension type.
