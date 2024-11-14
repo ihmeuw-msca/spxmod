@@ -61,6 +61,8 @@ class VariableBuilder:
         space: Space = Space(),
         lam: float | dict[str, float] = 0.0,
         lam_mean: float = 0.0,
+        order_dim: str = "",
+        order: list[list[int]] | None = None,
         gprior: dict[str, float] | None = None,
         uprior: dict[str, float] | None = None,
         scale_by_distance: bool = False,
@@ -72,6 +74,8 @@ class VariableBuilder:
         self.space = space
         self.lam = lam
         self.lam_mean = lam_mean
+        self.order_dim = order_dim
+        self.order = order
         self.gprior = gprior or dict(mean=0.0, sd=np.inf)
         self.uprior = uprior or dict(lb=-np.inf, ub=np.inf)
         self.scale_by_distance = scale_by_distance
@@ -151,6 +155,9 @@ class VariableBuilder:
         return self.space.build_smoothing_prior(
             size, self.lam, self.lam_mean, self.scale_by_distance
         )
+
+    def build_order_prior(self) -> dict[str, NDArray]:
+        return self.space.build_order_prior(self.order_dim, self.order)
 
     def encode(self, data: DataFrame) -> DataFrame:
         """Encode variable column based on the space.
