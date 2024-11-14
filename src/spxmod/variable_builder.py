@@ -79,6 +79,18 @@ class VariableBuilder:
         self.gprior = gprior or dict(mean=0.0, sd=np.inf)
         self.uprior = uprior or dict(lb=-np.inf, ub=np.inf)
         self.scale_by_distance = scale_by_distance
+        gprior = gprior or dict(mean=0.0, sd=np.inf)
+        uprior = uprior or dict(lb=-np.inf, ub=np.inf)
+        for prior in [gprior, uprior]:
+            for key, value in prior.items():
+                if isinstance(value, list):
+                    if spline is not None:
+                        raise ValueError(
+                            "Cannot provide vector prior for spline variable"
+                        )
+                    prior[key] = np.asarray(value, dtype="float")
+        self.gprior = gprior
+        self.uprior = uprior
 
         if spline is not None:
             spline = XSpline(**spline)
@@ -99,7 +111,10 @@ class VariableBuilder:
             ]
         )
         if lam_cat > 0:
-            self.gprior["sd"] = 1.0 / np.sqrt(lam_cat)
+            if isinstance(self.gprior["sd"], np.ndarray):
+                self.gprior["sd"].fill(1.0 / np.sqrt(lam_cat))
+            else:
+                self.gprior["sd"] = 1.0 / np.sqrt(lam_cat)
         if self.spline is not None:
             self.gprior["size"] = self.spline.num_spline_bases
             self.uprior["size"] = self.spline.num_spline_bases
@@ -122,17 +137,36 @@ class VariableBuilder:
 
     def build_variables(self) -> list[dict]:
         """Returns the list of variables in the variable group."""
-        variables = [
-            dict(
-                name=name,
-                gprior=self.gprior,
-                uprior=self.uprior,
-                spline=self.spline,
-                spline_gpriors=self.spline_gpriors,
-                spline_upriors=self.spline_upriors,
-            )
-            for name in self.space.build_encoded_names(self.name)
-        ]
+        prior_info = {**self.gprior, **self.uprior}
+        for key, value in prior_info.items():
+            if np.isscalar(value):
+                prior_info[key] = np.repeat(value, self.size)
+
+        if self.spline is None:
+            variables = [
+                dict(
+                    name=name,
+                    gprior=dict(
+                        mean=prior_info["mean"][i], sd=prior_info["sd"][i]
+                    ),
+                    uprior=dict(lb=prior_info["lb"][i], ub=prior_info["ub"][i]),
+                )
+                for i, name in enumerate(
+                    self.space.build_encoded_names(self.name)
+                )
+            ]
+        else:
+            variables = [
+                dict(
+                    name=name,
+                    gprior=self.gprior,
+                    uprior=self.uprior,
+                    spline=self.spline,
+                    spline_gpriors=self.spline_gpriors,
+                    spline_upriors=self.spline_upriors,
+                )
+                for name in self.space.build_encoded_names(self.name)
+            ]
         return variables
 
     def build_smoothing_prior(self) -> dict[str, NDArray]:
