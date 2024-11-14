@@ -11,11 +11,14 @@ class Dimension:
     ----------
     name : str
         Name of the dimension in the data.
+    skipna : bool, optional
+        Whether to exclude rows where name is nan. Default is True.
 
     """
 
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, skipna: bool = True) -> None:
         self.name = name
+        self.skipna = skipna
         self._span: NDArray | None = None
 
     @property
@@ -37,7 +40,12 @@ class Dimension:
             Data to set the unique dimension values from.
 
         """
-        self._span = np.unique(data[self.name])
+        if self.skipna:
+            self._span = np.unique(
+                data.query(f"{self.name}.notna()")[self.name]
+            )
+        else:
+            self._span = np.unique(data[self.name])
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(name={self.name})"
@@ -107,7 +115,7 @@ class NumericalDimension(Dimension):
         return coo_matrix((val, (row, col)), shape=(size - 1, self.size))
 
 
-def build_dimension(name: str, dim_type: str) -> Dimension:
+def build_dimension(name: str, dim_type: str, skipna: bool = True) -> Dimension:
     """Create a dimension based on the dimension type.
 
     Parameters
@@ -116,6 +124,8 @@ def build_dimension(name: str, dim_type: str) -> Dimension:
         Name of the dimension in the data.
     dim_type : {'categorical', 'numerical'}
         Type of the dimension.
+    skipna : bool, optional
+        Whether to exclude rows where name is nan. Default is True.
 
     Returns
     -------
@@ -124,8 +134,8 @@ def build_dimension(name: str, dim_type: str) -> Dimension:
 
     """
     if dim_type == "categorical":
-        return CategoricalDimension(name)
+        return CategoricalDimension(name, skipna)
     elif dim_type == "numerical":
-        return NumericalDimension(name)
+        return NumericalDimension(name, skipna)
     else:
         raise TypeError(f"Dimension type {dim_type} is not supported.")
