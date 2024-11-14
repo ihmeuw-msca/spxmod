@@ -108,6 +108,8 @@ class XModel:
             linear_upriors=[],
             param_specs=param_specs or {},
         )
+        if param_specs is not None:
+            self.core_config.update(param_specs)
         self.spaces = spaces
         self.var_builders = var_builders
 

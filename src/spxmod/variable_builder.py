@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+from xspline import XSpline
 
 from spxmod.dimension import CategoricalDimension
 from spxmod.space import Space
@@ -13,12 +14,12 @@ class VariableBuilder:
 
     Parameters
     ----------
-    name : str
+    name
         Name of the variable column in the data.
-    space : Space, optional
+    space
         Space to partition the variable on. If None, the variable is
         not partitioned.
-    lam : float, optional
+    lam
         Regularization parameter for the coefficients in the variable
         group. Default is 0. If the dimension is numerical, a Gaussian
         prior with mean 0 and standard deviation 1/sqrt(lam) is set on
@@ -26,21 +27,31 @@ class VariableBuilder:
         dimension. If the dimension is categorical, a Gaussian prior
         with mean 0 and standard deviation 1/sqrt(lam) is set on the
         coefficients.
-    lam_mean : float, optional
+    lam_mean
         Regularization parameter for the mean of the coefficients in the
         variable group. Default is 1e-8. A Gaussian prior with mean 0
         and standard deviation 1/sqrt(lam_mean) is set on the mean of
         the coefficients.
-    gprior : tuple, optional
+    gprior
         Gaussian prior for the variable. Default is (0, np.inf).
         Argument is overwritten with (0, 1/sqrt(lam)) if dimension is
         categorical.
-    uprior : tuple, optional
+    uprior
         Uniform prior for the variable. Default is (-np.inf, np.inf).
     scale_by_distance : bool, optional
         Whether to scale the prior standard deviation by the distance
         between the neighboring values along the dimension. For
         numerical dimensions only. Default is False.
+    spline
+        Spline configuration for the variable. If None, variable will be parsed
+        as an instance of Variable, otherwise, it will be parsed as an instance
+        of SplineVariable.
+    spline_gpriors
+        Gaussian priors for the spline coefficients. For details please check
+        https://github.com/ihmeuw-msca/regmod/blob/release/0.1.2/src/regmod/prior.py
+    spline_upriors
+        Uniform priors for the spline coefficients. For details please check
+        https://github.com/ihmeuw-msca/regmod/blob/release/0.1.2/src/regmod/prior.py
 
     """
 
@@ -55,6 +66,9 @@ class VariableBuilder:
         gprior: dict[str, float] | None = None,
         uprior: dict[str, float] | None = None,
         scale_by_distance: bool = False,
+        spline: dict | None = None,
+        spline_gpriors: list[dict] | None = None,
+        spline_upriors: list[dict] | None = None,
     ) -> None:
         self.name = name
         self.space = space
@@ -62,15 +76,27 @@ class VariableBuilder:
         self.lam_mean = lam_mean
         self.order_dim = order_dim
         self.order = order
+        self.gprior = gprior or dict(mean=0.0, sd=np.inf)
+        self.uprior = uprior or dict(lb=-np.inf, ub=np.inf)
         self.scale_by_distance = scale_by_distance
         gprior = gprior or dict(mean=0.0, sd=np.inf)
         uprior = uprior or dict(lb=-np.inf, ub=np.inf)
         for prior in [gprior, uprior]:
             for key, value in prior.items():
                 if isinstance(value, list):
+                    if spline is not None:
+                        raise ValueError(
+                            "Cannot provide vector prior for spline variable"
+                        )
                     prior[key] = np.asarray(value, dtype="float")
         self.gprior = gprior
         self.uprior = uprior
+
+        if spline is not None:
+            spline = XSpline(**spline)
+        self.spline: XSpline = spline
+        self.spline_gpriors = spline_gpriors
+        self.spline_upriors = spline_upriors
 
         # transfer lam to gprior when dim is categorical
         if isinstance(self.lam, float):
@@ -89,6 +115,9 @@ class VariableBuilder:
                 self.gprior["sd"].fill(1.0 / np.sqrt(lam_cat))
             else:
                 self.gprior["sd"] = 1.0 / np.sqrt(lam_cat)
+        if self.spline is not None:
+            self.gprior["size"] = self.spline.num_spline_bases
+            self.uprior["size"] = self.spline.num_spline_bases
 
     @classmethod
     def from_config(
@@ -102,7 +131,9 @@ class VariableBuilder:
     @property
     def size(self) -> int:
         """Number of variables in the variable group."""
-        return self.space.size
+        if self.spline is None:
+            return self.space.size
+        return self.spline.num_spline_bases * self.space.size
 
     def build_variables(self) -> list[dict]:
         """Returns the list of variables in the variable group."""
@@ -111,14 +142,31 @@ class VariableBuilder:
             if np.isscalar(value):
                 prior_info[key] = np.repeat(value, self.size)
 
-        variables = [
-            dict(
-                name=name,
-                gprior=dict(mean=prior_info["mean"][i], sd=prior_info["sd"][i]),
-                uprior=dict(lb=prior_info["lb"][i], ub=prior_info["ub"][i]),
-            )
-            for i, name in enumerate(self.space.build_encoded_names(self.name))
-        ]
+        if self.spline is None:
+            variables = [
+                dict(
+                    name=name,
+                    gprior=dict(
+                        mean=prior_info["mean"][i], sd=prior_info["sd"][i]
+                    ),
+                    uprior=dict(lb=prior_info["lb"][i], ub=prior_info["ub"][i]),
+                )
+                for i, name in enumerate(
+                    self.space.build_encoded_names(self.name)
+                )
+            ]
+        else:
+            variables = [
+                dict(
+                    name=name,
+                    gprior=self.gprior,
+                    uprior=self.uprior,
+                    spline=self.spline,
+                    spline_gpriors=self.spline_gpriors,
+                    spline_upriors=self.spline_upriors,
+                )
+                for name in self.space.build_encoded_names(self.name)
+            ]
         return variables
 
     def build_smoothing_prior(self) -> dict[str, NDArray]:
@@ -137,8 +185,9 @@ class VariableBuilder:
             Smoothing Gaussian prior matrix and vector.
 
         """
+        size = 1 if self.spline is None else self.spline.num_spline_bases
         return self.space.build_smoothing_prior(
-            self.lam, self.lam_mean, self.scale_by_distance
+            size, self.lam, self.lam_mean, self.scale_by_distance
         )
 
     def build_order_prior(self) -> dict[str, NDArray]:
@@ -158,4 +207,17 @@ class VariableBuilder:
             Encoded variable columns.
 
         """
-        return self.space.encode(data, column=self.name)
+        val = (
+            np.ones(len(data))
+            if self.name == "intercept"
+            else data[self.name].to_numpy()
+        )
+
+        if self.spline is not None:
+            mat = self.spline.design_mat(val)
+        else:
+            mat = val[:, np.newaxis]
+
+        coords = data[self.space.dim_names]
+
+        return self.space.encode(mat, coords)

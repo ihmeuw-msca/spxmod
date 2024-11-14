@@ -6,14 +6,19 @@ from msca.linalg.matrix import Matrix, asmatrix
 from msca.optim.solver import IPSolver, NTCGSolver
 from regmod.data import Data
 from regmod.models import BinomialModel, GaussianModel, PoissonModel
+from regmod.parameter import Parameter
 from regmod.prior import (
     GaussianPrior,
     LinearGaussianPrior,
     LinearUniformPrior,
+    SplineGaussianPrior,
+    SplinePrior,
+    SplineUniformPrior,
     UniformPrior,
 )
-from regmod.variable import Variable
+from regmod.variable import SplineVariable, Variable
 from scipy.stats import norm
+from xspline import XSpline
 
 from spxmod.linalg import get_pred_var
 from spxmod.typing import Callable, DataFrame, NDArray, RegmodModel
@@ -43,25 +48,109 @@ def msca_optimize(
     return result.x
 
 
+class SparseParameter(Parameter):
+    def get_linear_gmat(self) -> Matrix:
+        """Get the linear Gaussian prior matrix.
+
+        Returns
+        -------
+        Matrix
+            Gaussian prior design matrix.
+
+        """
+        if len(self.variables) == 0:
+            return np.empty(shape=(0, 0))
+        gmat = sp.block_diag(
+            [
+                (
+                    var.get_linear_gmat()
+                    if isinstance(var, SplineVariable)
+                    else np.empty((0, 1))
+                )
+                for var in self.variables
+            ]
+        )
+        if len(self.linear_gpriors) > 0:
+            gmat = sp.vstack(
+                [gmat] + [prior.mat for prior in self.linear_gpriors]
+            )
+        return asmatrix(sp.csc_matrix(gmat))
+
+    def get_linear_umat(self) -> Matrix:
+        """Get the linear Uniform prior matrix.
+
+        Returns
+        -------
+        Matrix
+            Uniform prior design matrix.
+
+        """
+        if len(self.variables) == 0:
+            return np.empty(shape=(0, 0))
+        umat = sp.block_diag(
+            [
+                (
+                    var.get_linear_umat()
+                    if isinstance(var, SplineVariable)
+                    else np.empty((0, 1))
+                )
+                for var in self.variables
+            ]
+        )
+        if len(self.linear_upriors) > 0:
+            umat = sp.vstack(
+                [umat] + [prior.mat for prior in self.linear_upriors]
+            )
+        return asmatrix(sp.csc_matrix(umat))
+
+
 class SparseRegmodModel(RegmodModel):
+    def __init__(
+        self,
+        data: dict,
+        variables: list[dict],
+        linear_gpriors: list[dict] | None = None,
+        linear_upriors: list[dict] | None = None,
+        **kwargs,
+    ):
+        data = Data(**data)
+
+        # build variables
+        variables = [_build_regmod_variable(**v) for v in variables]
+
+        linear_gpriors = linear_gpriors or []
+        linear_upriors = linear_upriors or []
+
+        # build smoothing prior
+        if linear_gpriors:
+            for i, prior in enumerate(linear_gpriors):
+                if prior["mat"].size > 0:
+                    linear_gpriors[i] = LinearGaussianPrior(**prior)
+
+        if linear_upriors:
+            for i, prior in enumerate(linear_upriors):
+                if prior["mat"].size > 0:
+                    linear_upriors[i] = LinearUniformPrior(**prior)
+
+        param = SparseParameter(
+            name=self.param_names[0],
+            variables=variables,
+            linear_gpriors=linear_gpriors,
+            linear_upriors=linear_upriors,
+            **kwargs,
+        )
+        super().__init__(data, params=[param])
+
     def attach_df(self, df: DataFrame, encode: Callable) -> None:
+        param = self.params[0]
         self.data.attach_df(df)
         self.mat = [asmatrix(sp.csc_matrix(encode(df)))]
-        self.uvec = self.get_uvec()
-        self.gvec = self.get_gvec()
-        self.linear_uvec = self.get_linear_uvec()
-        self.linear_gvec = self.get_linear_gvec()
-        self.linear_umat = asmatrix(sp.csc_matrix((0, self.size)))
-        self.linear_gmat = asmatrix(sp.csc_matrix((0, self.size)))
-        param = self.params[0]
-        if self.params[0].linear_gpriors:
-            self.linear_gmat = asmatrix(
-                sp.csc_matrix(param.linear_gpriors[0].mat)
-            )
-        if self.params[0].linear_upriors:
-            self.linear_umat = asmatrix(
-                sp.csc_matrix(param.linear_upriors[0].mat)
-            )
+        self.uvec = param.get_uvec()
+        self.gvec = param.get_gvec()
+        self.linear_uvec = param.get_linear_uvec()
+        self.linear_gvec = param.get_linear_gvec()
+        self.linear_gmat = param.get_linear_gmat()
+        self.linear_umat = param.get_linear_umat()
 
         # parse constraints
         cmat = asmatrix(
@@ -185,11 +274,8 @@ class SparseBinomialModel(SparseRegmodModel, BinomialModel):
     """Sparse Binomial model."""
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.params[0].inv_link.name != "expit":
-            raise ValueError(
-                "Sparse Binomial model can only work with expit inv_link function"
-            )
+        kwargs["inv_link"] = "expit"
+        SparseRegmodModel.__init__(self, *args, **kwargs)
 
     def objective(self, coefs: NDArray) -> float:
         weights = self.data.weights * self.data.trim_weights
@@ -236,11 +322,8 @@ class SparseGaussianModel(SparseRegmodModel, GaussianModel):
     """Sparse Gaussian model."""
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.params[0].inv_link.name != "identity":
-            raise ValueError(
-                "Sparse Gaussian model can only work with identity inv_link function"
-            )
+        kwargs["inv_link"] = "identity"
+        SparseRegmodModel.__init__(self, *args, **kwargs)
 
     def objective(self, coefs: NDArray) -> float:
         weights = self.data.weights * self.data.trim_weights
@@ -285,11 +368,8 @@ class SparsePoissonModel(SparseRegmodModel, PoissonModel):
     """Sparse Poisson model."""
 
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.params[0].inv_link.name != "exp":
-            raise ValueError(
-                "Sparse Poisson model can only work with exp inv_link function"
-            )
+        kwargs["inv_link"] = "exp"
+        SparseRegmodModel.__init__(self, *args, **kwargs)
 
     def objective(self, coefs: NDArray) -> float:
         weights = self.data.weights * self.data.trim_weights
@@ -382,10 +462,36 @@ def build_regmod_model(
     )
 
 
-def _build_regmod_variable(name: str, gprior: dict, uprior: dict) -> Variable:
-    gprior = GaussianPrior(**gprior)
-    uprior = UniformPrior(**uprior)
-    return Variable(name=name, priors=[gprior, uprior])
+def _build_regmod_variable(
+    name: str,
+    gprior: dict | None = None,
+    uprior: dict | None = None,
+    spline: XSpline | None = None,
+    spline_gpriors: list[dict] | None = None,
+    spline_upriors: list[dict] | None = None,
+) -> Variable:
+    priors = []
+    if gprior is not None:
+        priors.append(GaussianPrior(**gprior))
+    if uprior is not None:
+        priors.append(UniformPrior(**uprior))
+    if spline_gpriors is not None:
+        priors += [
+            SplineGaussianPrior(**spline_gprior)
+            for spline_gprior in spline_gpriors
+        ]
+    if spline_upriors is not None:
+        priors += [
+            SplineUniformPrior(**spline_uprior)
+            for spline_uprior in spline_upriors
+        ]
+    if spline is None:
+        return Variable(name=name, priors=priors)
+    else:
+        for prior in priors:
+            if isinstance(prior, SplinePrior):
+                prior.attach_spline(spline)
+        return SplineVariable(name=name, spline=spline, priors=priors)
 
 
 def get_vcov(hessian: Matrix, jacobian2: Matrix) -> NDArray:
