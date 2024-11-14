@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+
 from spxmod.space import Space
 
 
@@ -41,24 +42,32 @@ def test_set_span(space, data):
 
 def test_encode(space, data):
     space.set_span(data=data)
-    mat = space.encode(data=data, column="sdi")
+    mat = data[["sdi"]].to_numpy()
+    coords = data[space.dim_names]
+    mat = space.encode(mat, coords)
     assert np.allclose(mat.toarray(), np.diag(np.arange(1, 7, dtype=float))[:5])
 
 
 def test_build_smoothing_prior(space, data):
     space.set_span(data=data)
-    prior = space.build_smoothing_prior(lam=1.0, lam_mean=0.0)
+    prior = space.build_smoothing_prior(size=2, lam=1.0, lam_mean=0.0)
 
     assert np.allclose(
         prior["mat"].toarray(),
         np.array(
             [
-                [1.0, -1.0, 0.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, -1.0, 0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0, -1.0, 0.0],
-                [0.0, 0.0, 0.0, 0.0, 1.0, -1.0],
+                [1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0],
             ]
         ),
     )
 
-    assert np.allclose(prior["sd"], np.array([1.0, 1.0, 1.0, 1.0]))
+    assert np.allclose(
+        prior["sd"], np.repeat(np.array([1.0, 1.0, 1.0, 1.0]), 2)
+    )

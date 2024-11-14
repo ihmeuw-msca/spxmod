@@ -60,12 +60,14 @@ def ref_model(data, variables, linear_upriors) -> BinomialModel:
 
 @pytest.fixture
 def alt_model(data, variables, linear_upriors) -> SparseBinomialModel:
-    return SparseBinomialModel(
-        data,
-        param_specs={
-            "p": {"variables": variables, "linear_upriors": [linear_upriors[1]]}
-        },
+    data = dict(col_obs=data.col_obs, col_weights=data.col_weights)
+    variables = [dict(name=v.name) for v in variables]
+    linear_uprior = linear_upriors[1]
+    linear_uprior = dict(
+        mat=linear_uprior.mat, lb=linear_uprior.lb, ub=linear_uprior.ub
     )
+
+    return SparseBinomialModel(data, variables, linear_upriors=[linear_uprior])
 
 
 @pytest.fixture

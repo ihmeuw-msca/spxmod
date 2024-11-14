@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+
 from spxmod.space import Space
 from spxmod.variable_builder import VariableBuilder
 
@@ -63,3 +64,31 @@ def test_encode(data, dimensions):
     assert np.allclose(mat[:, 0], [1, 0, 0, 1, 0, 0])
     assert np.allclose(mat[:, 1], [0, 0, 2, 0, 0, 2])
     assert np.allclose(mat[:, 2], [0, 3, 0, 0, 3, 0])
+
+
+def test_encode_spline_variable(data, dimensions):
+    space = Space.from_config(dict(dims=[dimensions["loc"], dimensions["age"]]))
+    space.set_span(data)
+    spline = dict(knots=[1, 2, 3], degree=2)
+    var_builder = VariableBuilder(
+        name="sdi", space=space, lam=1.0, spline=spline
+    )
+    mat = var_builder.encode(data).toarray()
+
+    assert mat.shape == (len(data), var_builder.size)
+
+    spline_mat = var_builder.spline.design_mat(data["sdi"])
+    position_mat = np.array(
+        [
+            [1, 0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0, 0],
+            [0, 1, 0, 0, 0, 0],
+            [0, 0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0, 1],
+            [0, 0, 0, 0, 1, 0],
+        ]
+    )
+    my_mat = np.array(
+        [np.outer(x, y).ravel() for x, y in zip(position_mat, spline_mat)]
+    )
+    assert np.allclose(my_mat, mat)
