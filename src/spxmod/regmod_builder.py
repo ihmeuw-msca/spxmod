@@ -122,21 +122,22 @@ class SparseRegmodModel(RegmodModel):
         linear_upriors = linear_upriors or []
 
         # build smoothing prior
-        if linear_gpriors:
-            for i, prior in enumerate(linear_gpriors):
-                if prior["mat"].size > 0:
-                    linear_gpriors[i] = LinearGaussianPrior(**prior)
+        linear_gpriors_valid = []
+        for i, prior in enumerate(linear_gpriors):
+            if prior["mat"].size > 0:
+                linear_gpriors_valid.append(LinearGaussianPrior(**prior))
 
-        if linear_upriors:
-            for i, prior in enumerate(linear_upriors):
-                if prior["mat"].size > 0:
-                    linear_upriors[i] = LinearUniformPrior(**prior)
+        # build order prior
+        linear_upriors_valid = []
+        for i, prior in enumerate(linear_upriors):
+            if prior["mat"].size > 0:
+                linear_upriors_valid.append(LinearUniformPrior(**prior))
 
         param = SparseParameter(
             name=self.param_names[0],
             variables=variables,
-            linear_gpriors=linear_gpriors,
-            linear_upriors=linear_upriors,
+            linear_gpriors=linear_gpriors_valid,
+            linear_upriors=linear_upriors_valid,
             **kwargs,
         )
         super().__init__(data, params=[param])
@@ -412,54 +413,11 @@ class SparsePoissonModel(SparseRegmodModel, PoissonModel):
         return self.hessian_from_gprior + likli_jac2
 
 
-_model_dict = {
+model_dict = {
     "binomial": SparseBinomialModel,
     "gaussian": SparseGaussianModel,
     "poisson": SparsePoissonModel,
 }
-
-
-def build_regmod_model(
-    model_type: str,
-    data: dict,
-    variables: list[dict],
-    linear_gpriors: list[dict],
-    linear_upriors: list[dict],
-    param_specs: dict,
-) -> RegmodModel:
-    # build data
-    data = Data(**data)
-
-    # build variables
-    variables = [_build_regmod_variable(**kwargs) for kwargs in variables]
-
-    # build smoothing prior
-    linear_gpriors_valid = []
-    for i, prior in enumerate(linear_gpriors):
-        if prior["mat"].size > 0:
-            linear_gpriors_valid.append(LinearGaussianPrior(**prior))
-
-    # build order prior
-    linear_upriors_valid = []
-    for i, prior in enumerate(linear_upriors):
-        if prior["mat"].size > 0:
-            linear_upriors_valid.append(LinearUniformPrior(**prior))
-
-    # buid regmod model
-    model_class = _model_dict[model_type]
-    model_param = model_class.param_names[0]
-
-    return model_class(
-        data,
-        param_specs={
-            model_param: {
-                "variables": variables,
-                "linear_gpriors": linear_gpriors_valid,
-                "linear_upriors": linear_upriors_valid,
-                **param_specs,
-            }
-        },
-    )
 
 
 def _build_regmod_variable(

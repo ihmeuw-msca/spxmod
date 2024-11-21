@@ -65,7 +65,7 @@ import functools
 import numpy as np
 from scipy.sparse import block_diag, coo_matrix, hstack
 
-from spxmod.regmod_builder import build_regmod_model
+from spxmod.regmod_builder import model_dict
 from spxmod.space import Space
 from spxmod.typing import DataFrame, NDArray, RegmodModel
 from spxmod.variable_builder import VariableBuilder
@@ -100,13 +100,12 @@ class XModel:
         weights: str = "weight",
         param_specs: dict | None = None,
     ) -> None:
+        self.model_type = model_type
         self.core_config = dict(
-            model_type=model_type,
             data=dict(col_obs=obs, col_weights=weights),
             variables=[],
             linear_gpriors=[],
             linear_upriors=[],
-            param_specs=param_specs or {},
         )
         if param_specs is not None:
             self.core_config.update(param_specs)
@@ -161,7 +160,7 @@ class XModel:
         return [dict(mat=mat, lb=-np.inf, ub=0.0)]
 
     def _build_core(self) -> RegmodModel:
-        return build_regmod_model(**self.core_config)
+        return model_dict[self.model_type](**self.core_config)
 
     def _encode(self, data: DataFrame) -> coo_matrix:
         mats = [var_builder.encode(data) for var_builder in self.var_builders]
