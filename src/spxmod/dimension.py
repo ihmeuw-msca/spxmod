@@ -75,11 +75,11 @@ class Dimension:
             self._grid = grid
             self._span = np.asarray(data.mean(axis=1))
 
-    def encode_coord(self, coord: DataFrame) -> coo_matrix:
+    def encode_coords(self, coords: DataFrame) -> DataFrame:
         if self.interval is None:
-            row = np.arange(len(coord), dtype=int)
+            row = np.arange(len(coords), dtype=int)
             col = (
-                coord[[self.name]]
+                coords[[self.name]]
                 .merge(
                     DataFrame({self.name: self.span}).reset_index(),
                     on=self.name,
@@ -87,15 +87,21 @@ class Dimension:
                 )["index"]
                 .to_numpy()
             )
-            val = np.ones(len(coord))
+            val = np.ones(len(coords))
         else:
             val, (row, col) = build_integration_weights(
-                coord[self.interval[0]].to_numpy(),
-                coord[self.interval[1]].to_numpy(),
+                coords[self.interval[0]].to_numpy(),
+                coords[self.interval[1]].to_numpy(),
                 self.grid,
                 rule="midpoint",
             )
-        return coo_matrix((val, (row, col)), shape=(len(coord), self.size))
+        return DataFrame(
+            {
+                "row": row,
+                f"{self.name}_col": col,
+                f"{self.name}_val": val,
+            }
+        )
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(name={self.name})"

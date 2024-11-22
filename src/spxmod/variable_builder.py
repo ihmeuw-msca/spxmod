@@ -5,7 +5,7 @@ from xspline import XSpline
 
 from spxmod.dimension import CategoricalDimension
 from spxmod.space import Space
-from spxmod.typing import DataFrame, NDArray
+from spxmod.typing import DataFrame, NDArray, Series
 
 
 class VariableBuilder:
@@ -193,7 +193,9 @@ class VariableBuilder:
     def build_order_prior(self) -> dict[str, NDArray]:
         return self.space.build_order_prior(self.order_dim, self.order)
 
-    def encode(self, data: DataFrame) -> DataFrame:
+    def encode(
+        self, data: DataFrame, density: Series | None = None
+    ) -> DataFrame:
         """Encode variable column based on the space.
 
         Parameters
@@ -220,4 +222,4 @@ class VariableBuilder:
 
         coords = data[self.space.dim_names]
 
-        return self.space.encode(mat, coords)
+        return self.space.encode(mat, coords, density=density)
