@@ -220,6 +220,6 @@ class VariableBuilder:
         else:
             mat = val[:, np.newaxis]
 
-        coords = data[self.space.dim_names]
+        coords = data[self.space.coords_columns]
 
         return self.space.encode(mat, coords, density=density)

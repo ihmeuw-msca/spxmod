@@ -65,6 +65,16 @@ class Space:
         """Sizes of the dimensions."""
         return [dim.size for dim in self.dims]
 
+    @property
+    def coords_columns(self) -> list[str]:
+        coords_columns = []
+        for dim in self.dims:
+            if dim.interval is None:
+                coords_columns.append(dim.name)
+            else:
+                coords_columns.extend(dim.interval)
+        return coords_columns
+
     def set_span(self, data: DataFrame) -> None:
         """Set the unique dimension values and the grid of space.
 
