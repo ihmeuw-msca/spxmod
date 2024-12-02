@@ -4,10 +4,10 @@ import functools
 import itertools
 
 import numpy as np
-from scipy.sparse import coo_matrix, identity, kron, vstack
+from scipy.sparse import coo_matrix, diags, hstack, identity, kron, vstack
 
 from spxmod.dimension import Dimension, NumericalDimension, build_dimension
-from spxmod.typing import DataFrame, NDArray
+from spxmod.typing import DataFrame, NDArray, Series
 
 
 class Space:
@@ -65,6 +65,16 @@ class Space:
         """Sizes of the dimensions."""
         return [dim.size for dim in self.dims]
 
+    @property
+    def coords_columns(self) -> list[str]:
+        coords_columns = []
+        for dim in self.dims:
+            if dim.interval is None:
+                coords_columns.append(dim.name)
+            else:
+                coords_columns.extend(dim.interval)
+        return coords_columns
+
     def set_span(self, data: DataFrame) -> None:
         """Set the unique dimension values and the grid of space.
 
@@ -84,7 +94,55 @@ class Space:
             return [column]
         return [f"{column}_{self.name}_{i}" for i in range(self.size)]
 
-    def encode(self, mat: NDArray, coords: DataFrame) -> coo_matrix:
+    def encode_coords(self, coords: DataFrame) -> DataFrame:
+        weights = functools.reduce(
+            lambda x, y: x.merge(y, on="row", how="outer"),
+            (dim.encode_coords(coords) for dim in self.dims),
+        )
+        dim_sizes = [dim.size for dim in self.dims]
+        dim_names = [dim.name for dim in self.dims]
+        res_sizes = np.hstack([1, np.cumprod(dim_sizes[::-1][:-1], dtype=int)])[
+            ::-1
+        ]
+
+        weights["col"] = 0
+        weights["val"] = 1.0
+        for dim_name, res_size in zip(dim_names, res_sizes):
+            weights["col"] += weights[f"{dim_name}_col"] * res_size
+            weights["val"] *= weights[f"{dim_name}_val"]
+            weights.drop(
+                columns=[f"{dim_name}_col", f"{dim_name}_val"], inplace=True
+            )
+        return weights
+
+    def normalize_weights(
+        self, weights: DataFrame, density: Series | None = None
+    ) -> DataFrame:
+        if density is not None:
+            if not isinstance(density, Series):
+                raise TypeError(
+                    "density must be a pandas Series with index coincide with "
+                    "the space dimensions."
+                )
+            density = density.rename("density").reset_index()
+            missing_cols = set(self.span.columns) - set(density.columns)
+            if missing_cols:
+                raise ValueError(
+                    f"Please provide {missing_cols} as the density index."
+                )
+            matched_density = self.span.merge(density, how="left")
+            if matched_density["density"].isna().any():
+                raise ValueError(
+                    "Missing density value for certain kernel dimension."
+                )
+            density = matched_density["density"].to_numpy()
+            weights["val"] *= density[weights["col"].to_numpy()]
+        weights["val"] /= weights.groupby("row")["val"].transform("sum")
+        return weights
+
+    def encode(
+        self, mat: NDArray, coords: DataFrame, density: Series | None = None
+    ) -> coo_matrix:
         """Encode the data into the space grid.
 
         Parameters
@@ -102,21 +160,11 @@ class Space:
             Encoded design matrix.
 
         """
-        vals = mat.ravel()
-        nrow, ncol = mat.shape
-
-        row = np.repeat(np.arange(nrow, dtype=int), ncol)
-        col = np.zeros(nrow, dtype=int)
-        if self.dims:
-            col = (
-                coords.merge(
-                    self.span.reset_index(), how="left", on=self.dim_names
-                )
-                .eval("index")
-                .to_numpy()
-            )
-        col = np.add.outer(ncol * col, np.arange(ncol)).ravel()
-        return coo_matrix((vals, (row, col)), shape=(nrow, self.size * ncol))
+        weights = self.encode_coords(coords)
+        weights = self.normalize_weights(weights, density)
+        row, col, val = weights[["row", "col", "val"]].to_numpy().T
+        weights = coo_matrix((val, (row, col)), shape=(len(coords), self.size))
+        return hstack([diags(cov) @ weights for cov in mat.T], format="coo")
 
     def build_smoothing_prior(
         self,

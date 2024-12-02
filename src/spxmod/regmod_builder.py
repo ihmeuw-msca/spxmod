@@ -21,7 +21,7 @@ from scipy.stats import norm
 from xspline import XSpline
 
 from spxmod.linalg import get_pred_var
-from spxmod.typing import Callable, DataFrame, NDArray, RegmodModel
+from spxmod.typing import Callable, DataFrame, NDArray, RegmodModel, Series
 
 
 def msca_optimize(
@@ -142,10 +142,15 @@ class SparseRegmodModel(RegmodModel):
         )
         super().__init__(data, params=[param])
 
-    def attach_df(self, df: DataFrame, encode: Callable) -> None:
+    def attach_df(
+        self,
+        df: DataFrame,
+        encode: Callable,
+        density: dict[tuple[str, str], Series] | None = None,
+    ) -> None:
         param = self.params[0]
         self.data.attach_df(df)
-        self.mat = [asmatrix(sp.csc_matrix(encode(df)))]
+        self.mat = [asmatrix(sp.csc_matrix(encode(df, density)))]
         self.uvec = param.get_uvec()
         self.gvec = param.get_gvec()
         self.linear_uvec = param.get_linear_uvec()
@@ -220,10 +225,11 @@ class SparseRegmodModel(RegmodModel):
         self,
         data: DataFrame,
         encode: Callable,
+        density: dict[tuple[str, str], Series] | None = None,
         optimizer: Callable = msca_optimize,
         **optimizer_options,
     ) -> None:
-        self.attach_df(data, encode)
+        self.attach_df(data, encode, density)
         super().fit(optimizer=optimizer, **optimizer_options)
         self.detach_df()
 

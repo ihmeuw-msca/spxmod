@@ -1,4 +1,5 @@
 import numpy as np
+from msca.integrate.integration_weights import build_integration_weights
 from scipy.sparse import coo_matrix
 
 from spxmod.typing import DataFrame, NDArray
@@ -16,9 +17,16 @@ class Dimension:
 
     """
 
-    def __init__(self, name: str, skipna: bool = True) -> None:
+    def __init__(
+        self,
+        name: str,
+        interval: tuple[str, str] | None = None,
+        skipna: bool = True,
+    ) -> None:
         self.name = name
+        self.interval = interval
         self.skipna = skipna
+        self._grid: NDArray | None = None
         self._span: NDArray | None = None
 
     @property
@@ -26,6 +34,12 @@ class Dimension:
         if self._span is None:
             raise ValueError("Dimension values are not set.")
         return self._span
+
+    @property
+    def grid(self) -> NDArray:
+        if self._grid is None:
+            raise ValueError("Dimension values are not set.")
+        return self._grid
 
     @property
     def size(self) -> int:
@@ -40,12 +54,54 @@ class Dimension:
             Data to set the unique dimension values from.
 
         """
+        columns = [self.name] if self.interval is None else list(self.interval)
         if self.skipna:
-            self._span = np.unique(
-                data.query(f"{self.name}.notna()")[self.name]
-            )
+            for column in columns:
+                data = data.query(f"{column}.notna()")
+        data = (
+            data[columns]
+            .drop_duplicates()
+            .sort_values(columns, ignore_index=True)
+        )
+
+        if self.interval is None:
+            self._grid = np.unique(data[self.name])
+            self._span = self._grid.copy()
         else:
-            self._span = np.unique(data[self.name])
+            lb, ub = self.interval
+            grid = np.hstack([data.loc[0, lb], data[ub]])
+            if not np.allclose(data[lb], grid[:-1]):
+                raise ValueError("Range intervals contain gap(s)")
+            self._grid = grid
+            self._span = np.asarray(data.mean(axis=1))
+
+    def encode_coords(self, coords: DataFrame) -> DataFrame:
+        if self.interval is None:
+            row = np.arange(len(coords), dtype=int)
+            col = (
+                coords[[self.name]]
+                .merge(
+                    DataFrame({self.name: self.span}).reset_index(),
+                    on=self.name,
+                    how="left",
+                )["index"]
+                .to_numpy()
+            )
+            val = np.ones(len(coords))
+        else:
+            val, (row, col) = build_integration_weights(
+                coords[self.interval[0]].to_numpy(),
+                coords[self.interval[1]].to_numpy(),
+                self.grid,
+                rule="midpoint",
+            )
+        return DataFrame(
+            {
+                "row": row,
+                f"{self.name}_col": col,
+                f"{self.name}_val": val,
+            }
+        )
 
     def __repr__(self) -> str:
         return f"{type(self).__name__}(name={self.name})"
@@ -57,6 +113,18 @@ class CategoricalDimension(Dimension):
     is to emulate random effect in the linear mixed effect model.
 
     """
+
+    def __init__(
+        self,
+        name: str,
+        interval: tuple[str, str] | None = None,
+        skipna: bool = True,
+    ) -> None:
+        if interval is not None:
+            raise ValueError(
+                "Interval is not supported for categorical dimension."
+            )
+        super().__init__(name, interval, skipna)
 
 
 class NumericalDimension(Dimension):
@@ -115,7 +183,7 @@ class NumericalDimension(Dimension):
         return coo_matrix((val, (row, col)), shape=(size - 1, self.size))
 
 
-def build_dimension(name: str, dim_type: str, skipna: bool = True) -> Dimension:
+def build_dimension(name: str, dim_type: str, **kwargs) -> Dimension:
     """Create a dimension based on the dimension type.
 
     Parameters
@@ -134,8 +202,8 @@ def build_dimension(name: str, dim_type: str, skipna: bool = True) -> Dimension:
 
     """
     if dim_type == "categorical":
-        return CategoricalDimension(name, skipna)
+        return CategoricalDimension(name, **kwargs)
     elif dim_type == "numerical":
-        return NumericalDimension(name, skipna)
+        return NumericalDimension(name, **kwargs)
     else:
         raise TypeError(f"Dimension type {dim_type} is not supported.")

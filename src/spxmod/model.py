@@ -67,7 +67,7 @@ from scipy.sparse import block_diag, coo_matrix, hstack
 
 from spxmod.regmod_builder import model_dict
 from spxmod.space import Space
-from spxmod.typing import DataFrame, NDArray, RegmodModel
+from spxmod.typing import DataFrame, NDArray, RegmodModel, Series
 from spxmod.variable_builder import VariableBuilder
 
 
@@ -162,14 +162,25 @@ class XModel:
     def _build_core(self) -> RegmodModel:
         return model_dict[self.model_type](**self.core_config)
 
-    def _encode(self, data: DataFrame) -> coo_matrix:
-        mats = [var_builder.encode(data) for var_builder in self.var_builders]
+    def _encode(
+        self,
+        data: DataFrame,
+        density: dict[tuple[str, str], Series] | None = None,
+    ) -> coo_matrix:
+        density = density or {}
+        mats = [
+            var_builder.encode(
+                data, density.get((var_builder.name, var_builder.space.name))
+            )
+            for var_builder in self.var_builders
+        ]
         return hstack(mats)
 
     def fit(
         self,
         data: DataFrame,
         data_span: DataFrame | None = None,
+        density: dict[tuple[str, str], Series] | None = None,
         **optimizer_options,
     ) -> None:
         """Fit the model to the data.
@@ -187,7 +198,7 @@ class XModel:
         """
         self._set_core_config(data if data_span is None else data_span)
         self.core = self._build_core()
-        self.core.fit(data, self._encode, **optimizer_options)
+        self.core.fit(data, self._encode, density, **optimizer_options)
 
     def predict(
         self,
