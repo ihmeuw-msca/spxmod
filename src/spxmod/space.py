@@ -95,24 +95,24 @@ class Space:
         return [f"{column}_{self.name}_{i}" for i in range(self.size)]
 
     def encode_coords(self, coords: DataFrame) -> DataFrame:
+        if not self.dims:
+            return DataFrame(
+                {"row": np.arange(len(coords), dtype=int), "col": 0, "val": 1.0}
+            )
         weights = functools.reduce(
             lambda x, y: x.merge(y, on="row", how="outer"),
             (dim.encode_coords(coords) for dim in self.dims),
         )
         dim_sizes = [dim.size for dim in self.dims]
         dim_names = [dim.name for dim in self.dims]
-        res_sizes = np.hstack([1, np.cumprod(dim_sizes[::-1][:-1], dtype=int)])[
-            ::-1
-        ]
+        res_sizes = np.hstack([1, np.cumprod(dim_sizes[::-1][:-1], dtype=int)])[::-1]
 
         weights["col"] = 0
         weights["val"] = 1.0
         for dim_name, res_size in zip(dim_names, res_sizes):
             weights["col"] += weights[f"{dim_name}_col"] * res_size
             weights["val"] *= weights[f"{dim_name}_val"]
-            weights.drop(
-                columns=[f"{dim_name}_col", f"{dim_name}_val"], inplace=True
-            )
+            weights.drop(columns=[f"{dim_name}_col", f"{dim_name}_val"], inplace=True)
         return weights
 
     def normalize_weights(
@@ -127,14 +127,10 @@ class Space:
             density = density.rename("density").reset_index()
             missing_cols = set(self.span.columns) - set(density.columns)
             if missing_cols:
-                raise ValueError(
-                    f"Please provide {missing_cols} as the density index."
-                )
+                raise ValueError(f"Please provide {missing_cols} as the density index.")
             matched_density = self.span.merge(density, how="left")
             if matched_density["density"].isna().any():
-                raise ValueError(
-                    "Missing density value for certain kernel dimension."
-                )
+                raise ValueError("Missing density value for certain kernel dimension.")
             density = matched_density["density"].to_numpy()
             weights["val"] *= density[weights["col"].to_numpy()]
         weights["val"] /= weights.groupby("row")["val"].transform("sum")
