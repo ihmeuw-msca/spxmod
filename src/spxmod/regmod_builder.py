@@ -237,10 +237,11 @@ class SparseRegmodModel(RegmodModel):
         self,
         data: DataFrame,
         encode: Callable,
+        density: dict[tuple[str, str], Series] | None = None,
         return_ui: bool = False,
         alpha: float = 0.05,
     ) -> NDArray:
-        mat = sp.csc_matrix(encode(data))
+        mat = sp.csc_matrix(encode(data, density))
         param, coef = self.params[0], self.opt_coefs
 
         offset = np.zeros(len(data))

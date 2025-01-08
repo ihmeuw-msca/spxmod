@@ -203,6 +203,7 @@ class XModel:
     def predict(
         self,
         data: DataFrame,
+        density: dict[tuple[str, str], Series] | None = None,
         return_ui: bool = False,
         alpha: float = 0.05,
     ) -> NDArray:
@@ -224,4 +225,4 @@ class XModel:
             is also returned.
 
         """
-        return self.core.predict(data, self._encode, return_ui, alpha)
+        return self.core.predict(data, self._encode, density, return_ui, alpha)
