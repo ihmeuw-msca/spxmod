@@ -17,7 +17,7 @@ from regmod.prior import (
     UniformPrior,
 )
 from regmod.variable import SplineVariable, Variable
-from scipy.special import expit
+from scipy.special import expit, log_expit
 from scipy.stats import norm
 from xspline import XSpline
 
@@ -290,17 +290,8 @@ class SparseBinomialModel(SparseRegmodModel, BinomialModel):
         weights = self.data.weights * self.data.trim_weights
         y = self.get_lin_param(coefs)
 
-        z = np.exp(-y)
-        z_inf = np.isinf(z)
-        if z_inf.sum() > 0:
-            log_term = np.empty_like(z)
-            log_term[z_inf] = -y[z_inf]
-            log_term[~z_inf] = np.log(1 + z[~z_inf])
-        else:
-            log_term = np.log(1 + z)
-
         prior_obj = self.objective_from_gprior(coefs)
-        likli_obj = weights.dot(log_term + (1 - self.data.obs) * y)
+        likli_obj = weights.dot(-log_expit(y) + (1 - self.data.obs) * y)
         fun = prior_obj + likli_obj
 
         if np.isinf(fun):
@@ -322,12 +313,7 @@ class SparseBinomialModel(SparseRegmodModel, BinomialModel):
         weights = self.data.weights * self.data.trim_weights
         y = self.get_lin_params(coefs)
 
-        z = np.empty_like(y)
-        y_pos = y > 0
-        z[y_pos] = np.exp(-y[y_pos])
-        z[~y_pos] = np.exp(y[~y_pos])
-
-        likli_hess_scale = weights * (z / ((1 + z) ** 2))
+        likli_hess_scale = weights * expit(y) * expit(-y)
         likli_hess_right = mat.scale_rows(likli_hess_scale)
         likli_hess = mat.T.dot(likli_hess_right)
 
