@@ -17,6 +17,7 @@ from regmod.prior import (
     UniformPrior,
 )
 from regmod.variable import SplineVariable, Variable
+from scipy.special import expit
 from scipy.stats import norm
 from xspline import XSpline
 
@@ -289,27 +290,44 @@ class SparseBinomialModel(SparseRegmodModel, BinomialModel):
         weights = self.data.weights * self.data.trim_weights
         y = self.get_lin_param(coefs)
 
+        z = np.exp(-y)
+        z_inf = np.isinf(z)
+        if z_inf.sum() > 0:
+            log_term = np.empty_like(z)
+            log_term[z_inf] = -y[z_inf]
+            log_term[~z_inf] = np.log(1 + z[~z_inf])
+        else:
+            log_term = np.log(1 + z)
+
         prior_obj = self.objective_from_gprior(coefs)
-        likli_obj = weights.dot(
-            np.log(1 + np.exp(-y)) + (1 - self.data.obs) * y
-        )
-        return prior_obj + likli_obj
+        likli_obj = weights.dot(log_term + (1 - self.data.obs) * y)
+        fun = prior_obj + likli_obj
+
+        if np.isinf(fun):
+            raise ValueError("objective blew up")
+        return fun
 
     def gradient(self, coefs: NDArray) -> NDArray:
         mat = self.mat[0]
         weights = self.data.weights * self.data.trim_weights
-        z = np.exp(self.get_lin_param(coefs))
+        y = self.get_lin_params(coefs)
 
         prior_grad = self.gradient_from_gprior(coefs)
-        likli_grad = mat.T.dot(weights * (z / (1 + z) - self.data.obs))
+        likli_grad = mat.T.dot(weights * (expit(y) - self.data.obs))
+
         return prior_grad + likli_grad
 
     def hessian(self, coefs: NDArray) -> Matrix:
         mat = self.mat[0]
         weights = self.data.weights * self.data.trim_weights
-        z = np.exp(self.get_lin_param(coefs))
-        likli_hess_scale = weights * (z / ((1 + z) ** 2))
+        y = self.get_lin_params(coefs)
 
+        z = np.empty_like(y)
+        y_pos = y > 0
+        z[y_pos] = np.exp(-y[y_pos])
+        z[~y_pos] = np.exp(y[~y_pos])
+
+        likli_hess_scale = weights * (z / ((1 + z) ** 2))
         likli_hess_right = mat.scale_rows(likli_hess_scale)
         likli_hess = mat.T.dot(likli_hess_right)
 
@@ -318,11 +336,12 @@ class SparseBinomialModel(SparseRegmodModel, BinomialModel):
     def jacobian2(self, coefs: NDArray) -> NDArray:
         mat = self.mat[0]
         weights = self.data.weights * self.data.trim_weights
-        z = np.exp(self.get_lin_param(coefs))
-        likli_jac_scale = weights * (z / (1 + z) - self.data.obs)
+        y = self.get_lin_param(coefs)
 
+        likli_jac_scale = weights * (expit(y) - self.data.obs)
         likli_jac = mat.T.scale_cols(likli_jac_scale)
         likli_jac2 = likli_jac.dot(likli_jac.T)
+
         return self.hessian_from_gprior + likli_jac2
 
 
