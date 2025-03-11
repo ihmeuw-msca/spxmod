@@ -301,7 +301,7 @@ class SparseBinomialModel(SparseRegmodModel, BinomialModel):
     def gradient(self, coefs: NDArray) -> NDArray:
         mat = self.mat[0]
         weights = self.data.weights * self.data.trim_weights
-        y = self.get_lin_params(coefs)
+        y = self.get_lin_param(coefs)
 
         prior_grad = self.gradient_from_gprior(coefs)
         likli_grad = mat.T.dot(weights * (expit(y) - self.data.obs))
@@ -311,7 +311,7 @@ class SparseBinomialModel(SparseRegmodModel, BinomialModel):
     def hessian(self, coefs: NDArray) -> Matrix:
         mat = self.mat[0]
         weights = self.data.weights * self.data.trim_weights
-        y = self.get_lin_params(coefs)
+        y = self.get_lin_param(coefs)
 
         likli_hess_scale = weights * expit(y) * expit(-y)
         likli_hess_right = mat.scale_rows(likli_hess_scale)
