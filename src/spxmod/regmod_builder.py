@@ -28,11 +28,11 @@ from spxmod.typing import Callable, DataFrame, NDArray, RegmodModel, Series
 def glqp_optimize(
     model: RegmodModel, x0: NDArray | None = None, verbose = True
 ) -> NDArray:
-    from glqp import LogisticNLL,PoissonNLL,GaussianNLL
+    from glqp.obj import LogisticNLL,PoissonNLL,GaussianNLL
     from glqp import GLQP
     #Import inside so no error if not installed and calling msca_optimize
     zero_vec = np.zeros(model.size)
-    b = -1. * model.gradent_from_gprior(zero_vec)
+    b = -1. * model.gradient_from_gprior(zero_vec)
     A = model.mat[0]
     Q = model.hessian_from_gprior
     y = model.data.obs
