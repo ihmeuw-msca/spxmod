@@ -25,6 +25,47 @@ from spxmod.linalg import get_pred_var
 from spxmod.typing import Callable, DataFrame, NDArray, RegmodModel, Series
 
 
+def glqp_optimize(
+    model: RegmodModel, x0: NDArray | None = None, verbose = True
+) -> NDArray:
+    from glqp import LogisticNLL,PoissonNLL,GaussianNLL
+    from glqp import GLQP
+    #Import inside so no error if not installed and calling msca_optimize
+    zero_vec = np.zeros(model.size)
+    b = -1. * model.gradent_from_gprior(zero_vec)
+    A = model.mat[0]
+    Q = model.hessian_from_gprior
+    y = model.data.obs
+    w = model.data.weights
+    b = -model.gradient_from_gprior(np.zeros(model.size))
+
+    if model.cmat.size == 0:
+        C = None
+        c = None
+    else:
+        C = model.cmat
+        c = model.cvec,
+
+    if type(model)==SparseBinomialModel:
+        glm_f = LogisticNLL(y,w)
+    elif type(model)==SparseGaussianModel:
+        glm_f = GaussianNLL(y,w)
+    elif type(model)==SparsePoissonModel:
+        glm_f = PoissonNLL(y,w)
+    else:
+        raise ValueError("Model not compatible, must be one of SparseBinomialModel,SparseGaussianModel,SparsePoissonModel")
+    glqp_problem = GLQP(
+        f = glm_f, A = A,
+        Q = Q, b = b,
+        C = C,c = c
+        )
+    x,opt_result = glqp_problem.solve(verbose = verbose)
+    model.opt_result = opt_result
+    model.opt_coefs = x.copy()
+    model.opt_hessian = model.hessian(model.opt_coefs)
+    model.opt_jacobian2 = model.jacobian2(model.opt_coefs)
+    return x
+
 def msca_optimize(
     model: RegmodModel, x0: NDArray | None = None, options: dict | None = None
 ) -> NDArray:
