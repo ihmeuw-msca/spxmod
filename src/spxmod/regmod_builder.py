@@ -44,7 +44,7 @@ def glqp_optimize(
         c = None
     else:
         C = model.cmat
-        c = model.cvec,
+        c = model.cvec
 
     if type(model)==SparseBinomialModel:
         glm_f = LogisticNLL(y,w)
