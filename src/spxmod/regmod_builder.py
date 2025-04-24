@@ -60,6 +60,10 @@ def glqp_optimize(
         C = C,c = c
         )
     x,opt_result = glqp_problem.solve(verbose = verbose)
+    if 'optimal' in opt_result.termination_tag:
+        opt_result.success = True
+    else:
+        opt_result.success = False
     model.opt_result = opt_result
     model.opt_coefs = x.copy()
     model.opt_hessian = model.hessian(model.opt_coefs)
