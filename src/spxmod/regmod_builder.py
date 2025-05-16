@@ -3,7 +3,7 @@ from functools import cached_property
 import numpy as np
 import scipy.sparse as sp
 from msca.linalg.matrix import Matrix, asmatrix
-from msca.optim.solver import IPSolver, NTCGSolver
+from msca.optim.solver import IPSolver, NTCGSolver, NTSolver
 from regmod.data import Data
 from regmod.models import BinomialModel, GaussianModel, PoissonModel
 from regmod.parameter import Parameter
@@ -26,13 +26,19 @@ from spxmod.typing import Callable, DataFrame, NDArray, RegmodModel, Series
 
 
 def msca_optimize(
-    model: RegmodModel, x0: NDArray | None = None, options: dict | None = None
+    model: RegmodModel,
+    x0: NDArray | None = None,
+    direct: bool = False,
+    options: dict | None = None,
 ) -> NDArray:
     x0 = np.zeros(model.size) if x0 is None else x0
     options = options or {}
 
     if model.cmat.size == 0:
-        solver = NTCGSolver(model.objective, model.gradient, model.hessian)
+        if direct:
+            solver = NTSolver(model.objective, model.gradient, model.hessian)
+        else:
+            solver = NTCGSolver(model.objective, model.gradient, model.hessian)
     else:
         solver = IPSolver(
             model.objective,

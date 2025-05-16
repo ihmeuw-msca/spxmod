@@ -134,8 +134,8 @@ class XModel:
             space.set_span(data)
 
         self.core_config["variables"] = self._build_variables()
-        self.core_config["linear_gpriors"] = self._build_linear_gpriors()
-        self.core_config["linear_upriors"] = self._build_linear_upriors()
+        self.core_config["linear_gpriors"].extend(self._build_linear_gpriors())
+        self.core_config["linear_upriors"].extend(self._build_linear_upriors())
 
     def _build_variables(self) -> list[dict]:
         variables = []
