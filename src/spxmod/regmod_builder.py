@@ -60,7 +60,7 @@ def glqp_optimize(
         C = C,c = c
         )
     x,opt_result = glqp_problem.solve(verbose = verbose)
-    if 'optimal' in opt_result.termination_tag:
+    if 'opt' in opt_result.termination_tag:
         opt_result.success = True
     else:
         opt_result.success = False
