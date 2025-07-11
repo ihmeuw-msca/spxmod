@@ -112,6 +112,7 @@ class XModel:
         self.spaces = spaces
         self.var_builders = var_builders
 
+        self.core_config_set = False
         self.core: RegmodModel | None = None
 
     @classmethod
@@ -130,12 +131,18 @@ class XModel:
         return cls(**config)
 
     def _set_core_config(self, data: DataFrame) -> None:
-        for space in self.spaces:
-            space.set_span(data)
+        if not self.core_config_set:
+            for space in self.spaces:
+                space.set_span(data)
 
-        self.core_config["variables"] = self._build_variables()
-        self.core_config["linear_gpriors"].extend(self._build_linear_gpriors())
-        self.core_config["linear_upriors"].extend(self._build_linear_upriors())
+            self.core_config["variables"] = self._build_variables()
+            self.core_config["linear_gpriors"].extend(
+                self._build_linear_gpriors()
+            )
+            self.core_config["linear_upriors"].extend(
+                self._build_linear_upriors()
+            )
+            self.core_config_set = True
 
     def _build_variables(self) -> list[dict]:
         variables = []
