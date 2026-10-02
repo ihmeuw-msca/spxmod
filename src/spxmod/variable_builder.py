@@ -58,7 +58,7 @@ class VariableBuilder:
     def __init__(
         self,
         name: str,
-        space: Space = Space(),
+        space: Space | None = None,
         lam: float | dict[str, float] = 0.0,
         lam_mean: float = 0.0,
         order_dim: str = "",
@@ -71,7 +71,7 @@ class VariableBuilder:
         spline_upriors: list[dict] | None = None,
     ) -> None:
         self.name = name
-        self.space = space
+        self.space = space or Space()
         self.lam = lam
         self.lam_mean = lam_mean
         self.order_dim = order_dim
