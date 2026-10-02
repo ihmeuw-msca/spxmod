@@ -160,7 +160,13 @@ class Space:
         weights = self.normalize_weights(weights, density)
         row, col, val = weights[["row", "col", "val"]].to_numpy().T
         weights = coo_matrix((val, (row, col)), shape=(len(coords), self.size))
-        return hstack([diags(cov) @ weights for cov in mat.T], format="coo")
+        encoded = hstack([diags(cov) @ weights for cov in mat.T], format="coo")
+        # S = self.size (number of cells), k = mat.shape[1] (number of columns)
+        # hstack orders columns by mat_j then weights_j (mat_j * S + weights_j);
+        # variables and priors expect weights_j * k + mat_j
+        mat_j, weights_j = np.divmod(encoded.col, self.size)
+        encoded.col = weights_j * mat.shape[1] + mat_j
+        return encoded
 
     def build_smoothing_prior(
         self,
