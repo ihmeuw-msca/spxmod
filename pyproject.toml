@@ -13,7 +13,14 @@ license-files = ["LICENSE"]
 authors = [
     { name = "IHME Math Sciences", email = "ihme.math.sciences@gmail.com" },
 ]
-dependencies = ["numpy", "scipy", "pandas", "xspline", "regmod<0.2", "msca>=0.1.1"]
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+    "xspline",
+    "regmod>=0.1.2,<0.2",
+    "msca>=0.2.0",
+]
 
 [project.optional-dependencies]
 test = ["pytest"]
