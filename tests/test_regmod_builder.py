@@ -1,15 +1,21 @@
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
 import pytest
 import scipy.sparse as sps
-from regmod.prior import LinearUniformPrior
+from regmod.prior import GaussianPrior, LinearUniformPrior
+from scipy.special import expit
+from scipy.stats import norm
 
 from spxmod.regmod_builder import (
     BinomialModel,
     Data,
+    GaussianModel,
+    PoissonModel,
     SparseBinomialModel,
+    SparseGaussianModel,
+    SparsePoissonModel,
     Variable,
     get_vcov,
 )
@@ -60,19 +66,21 @@ def ref_model(data, variables, linear_upriors) -> BinomialModel:
 
 @pytest.fixture
 def alt_model(data, variables, linear_upriors) -> SparseBinomialModel:
-    data = dict(col_obs=data.col_obs, col_weights=data.col_weights)
-    variables = [dict(name=v.name) for v in variables]
+    data = {"col_obs": data.col_obs, "col_weights": data.col_weights}
+    variables = [{"name": v.name} for v in variables]
     linear_uprior = linear_upriors[1]
-    linear_uprior = dict(
-        mat=linear_uprior.mat, lb=linear_uprior.lb, ub=linear_uprior.ub
-    )
+    linear_uprior = {
+        "mat": linear_uprior.mat,
+        "lb": linear_uprior.lb,
+        "ub": linear_uprior.ub,
+    }
 
     return SparseBinomialModel(data, variables, linear_upriors=[linear_uprior])
 
 
 @pytest.fixture
 def encode(variables) -> Callable:
-    def _encode(df):
+    def _encode(df, density=None):
         return df[[v.name for v in variables]].to_numpy()
 
     return _encode
@@ -95,4 +103,94 @@ def test_model_fitting(sim_data, ref_model, alt_model, encode):
     assert np.allclose(
         get_vcov(alt_model.opt_hessian, alt_model.opt_jacobian2),
         ref_model.opt_vcov,
+    )
+
+
+def test_predict_with_ui(sim_data, ref_model, alt_model, encode):
+    ref_model.attach_df(sim_data)
+    ref_model.fit()
+    alt_model.fit(sim_data, encode)
+
+    alpha = 0.05
+    pred = alt_model.predict(sim_data, encode, return_ui=True, alpha=alpha)
+
+    # reference interval from the dense regmod model
+    mat = encode(sim_data)
+    lin_param = mat.dot(ref_model.opt_coefs)
+    lin_param_sd = np.sqrt(
+        np.einsum("ij,ij->i", mat.dot(ref_model.opt_vcov), mat)
+    )
+    ref_pred = expit(
+        np.vstack(
+            [
+                lin_param,
+                norm.ppf(0.5 * alpha, loc=lin_param, scale=lin_param_sd),
+                norm.ppf(1 - 0.5 * alpha, loc=lin_param, scale=lin_param_sd),
+            ]
+        )
+    )
+
+    assert pred.shape == (3, len(sim_data))
+    assert np.allclose(pred, ref_pred)
+    assert np.allclose(pred[0], alt_model.predict(sim_data, encode))
+    assert np.all(pred[1] <= pred[0]) and np.all(pred[0] <= pred[2])
+
+
+@pytest.fixture
+def family_data() -> pd.DataFrame:
+    rng = np.random.default_rng(0)
+    n = 50
+    df = pd.DataFrame(
+        {"cov_0": rng.normal(size=n), "cov_1": rng.normal(size=n), "w": 10.0}
+    )
+    lin = 0.3 * df["cov_0"] - 0.2 * df["cov_1"]
+    df["obs_binomial"] = rng.binomial(10, 1 / (1 + np.exp(-lin))) / 10
+    df["obs_poisson"] = rng.poisson(np.exp(lin)).astype(float)
+    df["obs_gaussian"] = lin + rng.normal(scale=0.1, size=n)
+    return df
+
+
+FAMILIES = {
+    "binomial": (BinomialModel, SparseBinomialModel),
+    "poisson": (PoissonModel, SparsePoissonModel),
+    "gaussian": (GaussianModel, SparseGaussianModel),
+}
+
+
+@pytest.mark.parametrize("family", list(FAMILIES))
+@pytest.mark.parametrize("direct", [False, True])
+def test_sparse_matches_dense(family_data, family, direct):
+    ref_cls, alt_cls = FAMILIES[family]
+    obs, cov_names = f"obs_{family}", ["cov_0", "cov_1"]
+    gprior = {"mean": 0.0, "sd": 1.0}
+
+    ref_model = ref_cls(
+        Data(col_obs=obs, col_weights="w"),
+        param_specs={
+            ref_cls.param_names[0]: {
+                "variables": [
+                    Variable(name, priors=[GaussianPrior(**gprior)])
+                    for name in cov_names
+                ]
+            }
+        },
+    )
+    ref_model.attach_df(family_data)
+    ref_model.fit()
+
+    alt_model = alt_cls(
+        {"col_obs": obs, "col_weights": "w"},
+        [{"name": name, "gprior": gprior} for name in cov_names],
+    )
+    alt_model.fit(
+        family_data,
+        lambda df, density=None: df[cov_names].to_numpy(),
+        direct=direct,
+    )
+
+    assert np.allclose(alt_model.opt_coefs, ref_model.opt_coefs, atol=1e-5)
+    assert np.allclose(
+        get_vcov(alt_model.opt_hessian, alt_model.opt_jacobian2),
+        ref_model.opt_vcov,
+        atol=1e-5,
     )

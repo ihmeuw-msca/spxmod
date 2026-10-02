@@ -1,5 +1,5 @@
 # ruff: noqa: F401
-from typing import Callable
+from collections.abc import Callable
 
 from numpy.typing import NDArray
 from pandas import DataFrame, Series

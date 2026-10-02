@@ -56,8 +56,7 @@ class Dimension:
         """
         columns = [self.name] if self.interval is None else list(self.interval)
         if self.skipna:
-            for column in columns:
-                data = data.query(f"{column}.notna()")
+            data = data.dropna(subset=columns)
         data = (
             data[columns]
             .drop_duplicates()

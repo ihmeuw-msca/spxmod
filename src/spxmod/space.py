@@ -105,14 +105,18 @@ class Space:
         )
         dim_sizes = [dim.size for dim in self.dims]
         dim_names = [dim.name for dim in self.dims]
-        res_sizes = np.hstack([1, np.cumprod(dim_sizes[::-1][:-1], dtype=int)])[::-1]
+        res_sizes = np.hstack([1, np.cumprod(dim_sizes[::-1][:-1], dtype=int)])[
+            ::-1
+        ]
 
         weights["col"] = 0
         weights["val"] = 1.0
         for dim_name, res_size in zip(dim_names, res_sizes):
             weights["col"] += weights[f"{dim_name}_col"] * res_size
             weights["val"] *= weights[f"{dim_name}_val"]
-            weights.drop(columns=[f"{dim_name}_col", f"{dim_name}_val"], inplace=True)
+            weights.drop(
+                columns=[f"{dim_name}_col", f"{dim_name}_val"], inplace=True
+            )
         return weights
 
     def normalize_weights(
@@ -127,10 +131,14 @@ class Space:
             density = density.rename("density").reset_index()
             missing_cols = set(self.span.columns) - set(density.columns)
             if missing_cols:
-                raise ValueError(f"Please provide {missing_cols} as the density index.")
+                raise ValueError(
+                    f"Please provide {missing_cols} as the density index."
+                )
             matched_density = self.span.merge(density, how="left")
             if matched_density["density"].isna().any():
-                raise ValueError("Missing density value for certain kernel dimension.")
+                raise ValueError(
+                    "Missing density value for certain kernel dimension."
+                )
             density = matched_density["density"].to_numpy()
             weights["val"] *= density[weights["col"].to_numpy()]
         weights["val"] /= weights.groupby("row")["val"].transform("sum")
@@ -156,11 +164,18 @@ class Space:
             Encoded design matrix.
 
         """
+        mat = np.asarray(mat, dtype=float)
         weights = self.encode_coords(coords)
         weights = self.normalize_weights(weights, density)
         row, col, val = weights[["row", "col", "val"]].to_numpy().T
         weights = coo_matrix((val, (row, col)), shape=(len(coords), self.size))
-        return hstack([diags(cov) @ weights for cov in mat.T], format="coo")
+        encoded = hstack([diags(cov) @ weights for cov in mat.T], format="coo")
+        # S = self.size (number of cells), k = mat.shape[1] (number of columns)
+        # hstack orders columns by mat_j then weights_j (mat_j * S + weights_j);
+        # variables and priors expect weights_j * k + mat_j
+        mat_j, weights_j = np.divmod(encoded.col, self.size)
+        encoded.col = weights_j * mat.shape[1] + mat_j
+        return encoded
 
     def build_smoothing_prior(
         self,
@@ -218,7 +233,7 @@ class Space:
 
         # TODO: regmod cannot recognize sparse array as prior, this shouldn't
         # be necessary in the future
-        return dict(mat=mat, sd=sd)
+        return {"mat": mat, "sd": sd}
 
     def build_order_prior(
         self,
@@ -227,7 +242,7 @@ class Space:
     ) -> dict[str, NDArray]:
         mat = coo_matrix((0, self.size))
         if order_dim == "":
-            return dict(mat=mat)
+            return {"mat": mat}
 
         mats_default = list(map(identity, self.dim_sizes))
 
@@ -239,7 +254,7 @@ class Space:
                 )
                 mat = vstack([mat, functools.reduce(kron, mats)])
 
-        return dict(mat=mat)
+        return {"mat": mat}
 
 
 def _flatten_outer(x: NDArray, y: NDArray) -> NDArray:
