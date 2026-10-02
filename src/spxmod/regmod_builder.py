@@ -71,7 +71,7 @@ class SparseParameter(Parameter):
                 (
                     var.get_linear_gmat()
                     if isinstance(var, SplineVariable)
-                    else np.empty((0, 1))
+                    else sp.coo_matrix((0, 1))
                 )
                 for var in self.variables
             ]
@@ -98,7 +98,7 @@ class SparseParameter(Parameter):
                 (
                     var.get_linear_umat()
                     if isinstance(var, SplineVariable)
-                    else np.empty((0, 1))
+                    else sp.coo_matrix((0, 1))
                 )
                 for var in self.variables
             ]

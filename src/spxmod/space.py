@@ -164,6 +164,7 @@ class Space:
             Encoded design matrix.
 
         """
+        mat = np.asarray(mat, dtype=float)
         weights = self.encode_coords(coords)
         weights = self.normalize_weights(weights, density)
         row, col, val = weights[["row", "col", "val"]].to_numpy().T
@@ -232,7 +233,7 @@ class Space:
 
         # TODO: regmod cannot recognize sparse array as prior, this shouldn't
         # be necessary in the future
-        return dict(mat=mat, sd=sd)
+        return {"mat": mat, "sd": sd}
 
     def build_order_prior(
         self,
@@ -241,7 +242,7 @@ class Space:
     ) -> dict[str, NDArray]:
         mat = coo_matrix((0, self.size))
         if order_dim == "":
-            return dict(mat=mat)
+            return {"mat": mat}
 
         mats_default = list(map(identity, self.dim_sizes))
 
@@ -253,7 +254,7 @@ class Space:
                 )
                 mat = vstack([mat, functools.reduce(kron, mats)])
 
-        return dict(mat=mat)
+        return {"mat": mat}
 
 
 def _flatten_outer(x: NDArray, y: NDArray) -> NDArray:

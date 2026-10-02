@@ -8,12 +8,12 @@ from spxmod.space import Space
 @pytest.fixture
 def space() -> Space:
     return Space.from_config(
-        dict(
-            dims=[
-                dict(name="location_id", dim_type="categorical"),
-                dict(name="age_mid", dim_type="numerical"),
+        {
+            "dims": [
+                {"name": "location_id", "dim_type": "categorical"},
+                {"name": "age_mid", "dim_type": "numerical"},
             ]
-        )
+        }
     )
 
 
@@ -32,10 +32,10 @@ def test_set_span(space, data):
     space.set_span(data=data)
     assert space.span.equals(
         pd.DataFrame(
-            dict(
-                location_id=[1, 1, 1, 2, 2, 2],
-                age_mid=[1, 1.5, 3, 1, 1.5, 3],
-            )
+            {
+                "location_id": [1, 1, 1, 2, 2, 2],
+                "age_mid": [1, 1.5, 3, 1, 1.5, 3],
+            }
         )
     )
 
