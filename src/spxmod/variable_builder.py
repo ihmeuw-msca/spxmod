@@ -76,11 +76,11 @@ class VariableBuilder:
         self.lam_mean = lam_mean
         self.order_dim = order_dim
         self.order = order
-        self.gprior = gprior or dict(mean=0.0, sd=np.inf)
-        self.uprior = uprior or dict(lb=-np.inf, ub=np.inf)
+        self.gprior = gprior or {"mean": 0.0, "sd": np.inf}
+        self.uprior = uprior or {"lb": -np.inf, "ub": np.inf}
         self.scale_by_distance = scale_by_distance
-        gprior = gprior or dict(mean=0.0, sd=np.inf)
-        uprior = uprior or dict(lb=-np.inf, ub=np.inf)
+        gprior = gprior or {"mean": 0.0, "sd": np.inf}
+        uprior = uprior or {"lb": -np.inf, "ub": np.inf}
         for prior in [gprior, uprior]:
             for key, value in prior.items():
                 if isinstance(value, list):
@@ -144,27 +144,27 @@ class VariableBuilder:
 
         if self.spline is None:
             variables = [
-                dict(
-                    name=name,
-                    gprior=dict(
-                        mean=prior_info["mean"][i], sd=prior_info["sd"][i]
-                    ),
-                    uprior=dict(lb=prior_info["lb"][i], ub=prior_info["ub"][i]),
-                )
+                {
+                    "name": name,
+                    "gprior": {
+                        "mean": prior_info["mean"][i], "sd": prior_info["sd"][i]
+                    },
+                    "uprior": {"lb": prior_info["lb"][i], "ub": prior_info["ub"][i]},
+                }
                 for i, name in enumerate(
                     self.space.build_encoded_names(self.name)
                 )
             ]
         else:
             variables = [
-                dict(
-                    name=name,
-                    gprior=self.gprior,
-                    uprior=self.uprior,
-                    spline=self.spline,
-                    spline_gpriors=self.spline_gpriors,
-                    spline_upriors=self.spline_upriors,
-                )
+                {
+                    "name": name,
+                    "gprior": self.gprior,
+                    "uprior": self.uprior,
+                    "spline": self.spline,
+                    "spline_gpriors": self.spline_gpriors,
+                    "spline_upriors": self.spline_upriors,
+                }
                 for name in self.space.build_encoded_names(self.name)
             ]
         return variables
