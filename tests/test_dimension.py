@@ -117,3 +117,10 @@ def test_build_order_mat(data):
     dim.set_span(data)
     mat = dim.build_order_mat([2, 0]).toarray()
     assert np.allclose(mat, [[-1, 0, 1]])
+
+
+def test_set_span_non_identifier_column():
+    data = pd.DataFrame({"age group": [2.0, np.nan, 1.0]})
+    dim = NumericalDimension("age group")
+    dim.set_span(data)
+    assert np.allclose(dim.span, [1.0, 2.0])
