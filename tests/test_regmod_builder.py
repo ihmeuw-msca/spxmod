@@ -5,6 +5,8 @@ import pandas as pd
 import pytest
 import scipy.sparse as sps
 from regmod.prior import LinearUniformPrior
+from scipy.special import expit
+from scipy.stats import norm
 
 from spxmod.regmod_builder import (
     BinomialModel,
@@ -72,7 +74,7 @@ def alt_model(data, variables, linear_upriors) -> SparseBinomialModel:
 
 @pytest.fixture
 def encode(variables) -> Callable:
-    def _encode(df):
+    def _encode(df, density=None):
         return df[[v.name for v in variables]].to_numpy()
 
     return _encode
@@ -96,3 +98,33 @@ def test_model_fitting(sim_data, ref_model, alt_model, encode):
         get_vcov(alt_model.opt_hessian, alt_model.opt_jacobian2),
         ref_model.opt_vcov,
     )
+
+
+def test_predict_with_ui(sim_data, ref_model, alt_model, encode):
+    ref_model.attach_df(sim_data)
+    ref_model.fit()
+    alt_model.fit(sim_data, encode)
+
+    alpha = 0.05
+    pred = alt_model.predict(sim_data, encode, return_ui=True, alpha=alpha)
+
+    # reference interval from the dense regmod model
+    mat = encode(sim_data)
+    lin_param = mat.dot(ref_model.opt_coefs)
+    lin_param_sd = np.sqrt(
+        np.einsum("ij,ij->i", mat.dot(ref_model.opt_vcov), mat)
+    )
+    ref_pred = expit(
+        np.vstack(
+            [
+                lin_param,
+                norm.ppf(0.5 * alpha, loc=lin_param, scale=lin_param_sd),
+                norm.ppf(1 - 0.5 * alpha, loc=lin_param, scale=lin_param_sd),
+            ]
+        )
+    )
+
+    assert pred.shape == (3, len(sim_data))
+    assert np.allclose(pred, ref_pred)
+    assert np.allclose(pred[0], alt_model.predict(sim_data, encode))
+    assert np.all(pred[1] <= pred[0]) and np.all(pred[0] <= pred[2])

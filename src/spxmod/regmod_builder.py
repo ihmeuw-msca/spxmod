@@ -261,13 +261,16 @@ class SparseRegmodModel(RegmodModel):
             if alpha < 0 or alpha > 0.5:
                 raise ValueError("`alpha` has to be between 0 and 0.5")
             # TODO: explore the sparsity of the variance-covariance matrix
-            if self.core.size >= 5000:
+            if self.size >= 5000:
                 raise ValueError(
                     "the number of variables is too large for calculating the "
                     "prediction interval"
                 )
             vcov = get_vcov(self.opt_hessian, self.opt_jacobian2)
-            lin_param_sd = np.sqrt(((mat @ vcov) * mat).sum(axis=1))
+            lin_param_var = np.asarray(
+                mat.multiply(mat @ vcov).sum(axis=1)
+            ).ravel()
+            lin_param_sd = np.sqrt(lin_param_var)
             lin_param_lower = norm.ppf(
                 0.5 * alpha, loc=lin_param, scale=lin_param_sd
             )
