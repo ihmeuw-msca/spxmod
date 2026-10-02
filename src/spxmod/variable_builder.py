@@ -76,8 +76,6 @@ class VariableBuilder:
         self.lam_mean = lam_mean
         self.order_dim = order_dim
         self.order = order
-        self.gprior = gprior or {"mean": 0.0, "sd": np.inf}
-        self.uprior = uprior or {"lb": -np.inf, "ub": np.inf}
         self.scale_by_distance = scale_by_distance
         gprior = gprior or {"mean": 0.0, "sd": np.inf}
         uprior = uprior or {"lb": -np.inf, "ub": np.inf}
