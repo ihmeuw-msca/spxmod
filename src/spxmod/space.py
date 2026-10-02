@@ -164,6 +164,7 @@ class Space:
             Encoded design matrix.
 
         """
+        mat = np.asarray(mat, dtype=float)
         weights = self.encode_coords(coords)
         weights = self.normalize_weights(weights, density)
         row, col, val = weights[["row", "col", "val"]].to_numpy().T
