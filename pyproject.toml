@@ -1,30 +1,23 @@
 [build-system]
-requires = ["setuptools", "Cython", "numpy", "scipy"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
-# [project]
-# name = "spxmod"
-# version = "0.1.0"
-# description = "Coefficient-smoothing regression models"
-# readme = "README.md"
-# requires-python = ">=3.10"
-# license = { file = "LICENSE" }
-# authors = [
-#     { name = "IHME Math Sciences", email = "ihme.math.sciences@gmail.com" },
-# ]
-# dependencies = ["regmod==0.1.0", "Cython"]
+[project]
+name = "spxmod"
+version = "0.3.3"
+description = "Coefficient-smoothing regression models"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "BSD-2-Clause"
+license-files = ["LICENSE"]
+authors = [
+    { name = "IHME Math Sciences", email = "ihme.math.sciences@gmail.com" },
+]
+dependencies = ["numpy", "scipy", "pandas", "xspline", "regmod<0.2", "msca>=0.1.1"]
 
+[project.optional-dependencies]
+test = ["pytest"]
+docs = ["sphinx", "sphinx-autodoc-typehints", "furo"]
 
-
-# [project.optional-dependencies]
-# test = ["pytest"]
-# docs = ["sphinx", "sphinx-autodoc-typehints", "furo"]
-
-# [project.urls]
-# github = "https://github.com/ihmeuw-msca/spxmod"
-
-# [tool.sphinx]
-# project = "spxmod"
-# author = "IHME Math Sciences"
-# copyright = "2023, IHME Math Sciences"
-# version = "0.1.0"
+[project.urls]
+github = "https://github.com/ihmeuw-msca/spxmod"

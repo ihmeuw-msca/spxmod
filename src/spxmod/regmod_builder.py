@@ -21,7 +21,6 @@ from scipy.special import expit, log_expit
 from scipy.stats import norm
 from xspline import XSpline
 
-from spxmod.linalg import get_pred_var
 from spxmod.typing import Callable, DataFrame, NDArray, RegmodModel, Series
 
 
@@ -268,7 +267,7 @@ class SparseRegmodModel(RegmodModel):
                     "prediction interval"
                 )
             vcov = get_vcov(self.opt_hessian, self.opt_jacobian2)
-            lin_param_sd = np.sqrt(get_pred_var(mat, vcov))
+            lin_param_sd = np.sqrt(((mat @ vcov) * mat).sum(axis=1))
             lin_param_lower = norm.ppf(
                 0.5 * alpha, loc=lin_param, scale=lin_param_sd
             )
