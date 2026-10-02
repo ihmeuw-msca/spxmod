@@ -71,7 +71,7 @@ class VariableBuilder:
         spline_upriors: list[dict] | None = None,
     ) -> None:
         self.name = name
-        self.space = space or Space()
+        self.space = Space() if space is None else space
         self.lam = lam
         self.lam_mean = lam_mean
         self.order_dim = order_dim
@@ -147,9 +147,13 @@ class VariableBuilder:
                 {
                     "name": name,
                     "gprior": {
-                        "mean": prior_info["mean"][i], "sd": prior_info["sd"][i]
+                        "mean": prior_info["mean"][i],
+                        "sd": prior_info["sd"][i],
                     },
-                    "uprior": {"lb": prior_info["lb"][i], "ub": prior_info["ub"][i]},
+                    "uprior": {
+                        "lb": prior_info["lb"][i],
+                        "ub": prior_info["ub"][i],
+                    },
                 }
                 for i, name in enumerate(
                     self.space.build_encoded_names(self.name)
