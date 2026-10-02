@@ -21,7 +21,6 @@ from scipy.special import expit, log_expit
 from scipy.stats import norm
 from xspline import XSpline
 
-from spxmod.linalg import get_pred_var
 from spxmod.typing import Callable, DataFrame, NDArray, RegmodModel, Series
 
 
@@ -262,13 +261,16 @@ class SparseRegmodModel(RegmodModel):
             if alpha < 0 or alpha > 0.5:
                 raise ValueError("`alpha` has to be between 0 and 0.5")
             # TODO: explore the sparsity of the variance-covariance matrix
-            if self.core.size >= 5000:
+            if self.size >= 5000:
                 raise ValueError(
                     "the number of variables is too large for calculating the "
                     "prediction interval"
                 )
             vcov = get_vcov(self.opt_hessian, self.opt_jacobian2)
-            lin_param_sd = np.sqrt(get_pred_var(mat, vcov))
+            lin_param_var = np.asarray(
+                mat.multiply(mat @ vcov).sum(axis=1)
+            ).ravel()
+            lin_param_sd = np.sqrt(lin_param_var)
             lin_param_lower = norm.ppf(
                 0.5 * alpha, loc=lin_param, scale=lin_param_sd
             )
